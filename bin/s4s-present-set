@@ -1,0 +1,5 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+exec "s4s-slides-set" [lindex $argv 0] | s4s-presentation-controller

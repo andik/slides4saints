@@ -1,0 +1,337 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+# Song Editor
+#
+
+package require s4s-song 1.0
+package require s4s-toolbar 1.0
+
+#
+# Globals
+#
+
+set song(root) [lindex $argv 0]
+set song(sections) [list]
+set song(removed) [list]
+set song(changed) 0   ;# needs song to be saved?
+set song(cursec) ""
+
+set doc(sec_names) {Possible (common) Section Names are:
+1 - Verse 1 (Key Mapping: "1")
+2 - Verse 2 (Key Mapping: "2")
+...
+c - Chorus (Key Mapping: "c")
+p - Pre-Chorus (Key Mapping: "p")
+b - Bridge (Key Mapping: "b")
+
+If you don't need Key Mapping, 
+section-names are free to choose}
+
+# ===========================================================================
+
+# Setup Editor Font
+# -----------------
+font create EditFont
+font configure EditFont -family [font configure TkFixedFont -family]
+font configure EditFont -size [font configure TkFixedFont -size]
+if {[info exists env(S4S_SONG_EDIT_FONT)]} {
+	catch {font configure EditFont -family $env(S4S_SONG_EDIT_FONT)}
+}
+if {[info exists env(S4S_SONG_EDIT_SIZE)]} {
+	catch {font configure EditFont -size $env(S4S_SONG_EDIT_SIZE)}
+}
+
+# ===========================================================================
+
+# UI
+# ==
+
+bind . <Escape>  {action-exit}
+
+# save-clean up
+wm protocol . WM_DELETE_WINDOW action-exit
+
+# the Toolbar
+# -----------
+
+s4s-toolbar .toolbar {
+	button "Save"               action-save             {}
+	-      {}                   {}                      {}
+	button "Add Section..."     action-add-section      {-width 12}
+	button "Delete Section"     action-rm-section       {-width 12}
+	button "Rename Section..."  action-rename-section   {-width 12}
+	-      {}                   {}                      {}
+	button "Edit Extern..."     action-edit-sec-extern  {-width 12}
+	button "Attachments..."     action-attachments      {}
+	-      {}                   {}                      {}
+	button "Print..."           action-print            {}
+	button "Present..."         action-present          {}
+}
+
+# ---------------------------------------------------------------------------
+
+# Song Section Editor
+# -------------------
+
+# Section Selection
+pack [ttk::notebook .sections] -fill both -expand 1
+ttk::notebook::enableTraversal .sections
+
+# Song Properties
+# ---------------
+.sections add [ttk::frame .sections.props] -text "Properties" -padding 10
+set proprow 0
+foreach prop [s4s-song::all-props] {
+	set proptitle [string cat [string totitle $prop] ":"]
+	grid [ttk::label .sections.props.lbl-$prop -text $proptitle -anchor e -justify right] -column 0 -row $proprow -padx 2 -pady 2 -sticky nsew
+	grid [ttk::entry .sections.props.edt-$prop -textvariable songprop($prop)] -column 1 -row $proprow -sticky nsew -padx 2 -pady 2
+	incr proprow
+}
+grid columnconfigure .sections.props 0 -weight 1
+grid columnconfigure .sections.props 1 -weight 10
+
+# ===========================================================================
+
+# Utility Functions
+# =================
+
+# store current section's index and name in the given variables
+proc store-cursec {idxvar secvar} {
+	upvar 1 $idxvar idx
+	upvar 1 $secvar sec
+
+	set idx [expr {[.sections index [.sections select]] - 1}]
+	set sec [lindex $::song(sections) $idx]
+}
+
+# ---------------------------------------------------------------------------
+
+proc add-section {name {text ""}} {
+	global song
+
+	# add to sections list (for saving later on)
+	lappend song(sections) $name
+
+	# create section editor
+	set edit .sections.$name
+	text $edit  -undo true -font EditFont
+	if {$text ne ""} {
+		$edit insert 0.0 $text
+	} else {
+		$edit insert 0.0 [s4s-song::sec $song(root) $name]
+	}
+	$edit edit modified 0
+	bind $edit <<Modified>>  {set song(changed) [%W edit modified]}
+	#bind $edit <Key-Brace> {$edit insert mark "\]"}
+	bind $edit <Control-#>       {action-insert-chordpro %W}
+	bind $edit <Shift-Return>    {action-insert-start %W; break}
+	bind $edit <Control-Return>  {%W insert insert "\n\nslide\n\n"; break}
+	bind $edit <Control-Up>      {action-move-up %W; break}
+	bind $edit <Control-Down>    {action-move-down %W; break}
+	
+	# these spaces arround name are necessary if we want to have easy-accessable
+	# single-character section names
+	.sections add $edit -text "     $name     "
+}
+
+# ---------------------------------------------------------------------------
+
+proc load-song {} {
+	global song songprop
+
+	# read all properties of the song
+	foreach prop [s4s-song::all-props] {
+		set songprop($prop) [s4s-song::prop $song(root) $prop]
+	}
+
+	# prepare an empty list which is filled in add-section
+	set song(sections) [list]
+
+	# add all sections of the song
+	foreach sec [s4s-song::sections $song(root)] {
+		add-section $sec
+	}
+}
+
+# ===========================================================================
+
+# Actions for the Editor
+# ======================
+
+proc action-add-section {} {
+	global song
+	set sec ""
+	set sec [exec s4s-dlg-get-string "Name of new Section" "p.e. 1..n - Verse, c - Chorus..." ""]
+	if {$sec ne ""} {
+		add-section $sec
+		set song(changed) 1
+	}
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-save {} {
+	global song songprop
+
+	foreach prop [s4s-song::all-props] {
+		s4s-song::set-prop $song(root) $prop [set songprop($prop)]
+	}
+	
+	foreach sec $song(sections) {
+		s4s-song::set-sec $song(root) $sec [.sections.$sec get 0.0 end]
+	}
+
+	foreach sec $song(removed) {
+		s4s-song::remove-sec $song(root) $sec
+	}
+
+	set song(changed) 0
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-rm-section {} {
+	global song
+
+	store-cursec idx sec
+
+	# do not delete the properties tab
+	if {$idx < 0} return
+
+	set song(sections) [lreplace $song(sections) $idx $idx+1]
+	destroy .sections.$sec
+	lappend song(removed) $sec
+	set song(changed) 1
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-rename-section {} {
+	global song
+	set sec ""
+
+	store-cursec idx sec
+
+	# do not rename the properties tab
+	if {$idx < 0} return
+
+	set newname [exec s4s-dlg-get-string "New Name for Section '$sec'" "p.e. 1..n - Verse, c - Chorus..." ""]
+	if {$newname ne ""} {
+		set sectext [.sections.$sec get 0.0 end]
+		destroy .sections.$sec
+		set song(sections) [lreplace $song(sections) $idx $idx+1]
+		lappend song(removed) $sec
+		set song(changed) 1
+		add-section $newname $sectext
+	}
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-exit {} {
+	global song
+	if {$song(changed)} {
+		set r [tk_messageBox -message "Song unsaved. Save?" -type yesnocancel]
+		switch -- $r {
+			yes    { action-save; exit }
+			no     { exit }
+			cancel {}
+		}
+	} else {
+		exit
+	}
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-present {} {
+	global song
+	action-save
+	exec "s4s-present-song" $song(root) &
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-attachments {} {
+	global song
+	exec s4s-open-folder [file nativename [file join $song(root) attachments]]
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-insert-chordpro {edit} {
+	$edit insert "insert" "\[\]"
+	$edit mark set insert "insert - 1 c"
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-insert-start {edit} {
+	global songprop
+	$edit insert insert "\n$songprop(language) "
+	if {$songprop(translation) ne ""} {
+		set oldpos [$edit index insert]
+		$edit insert insert "\n$songprop(translation) "
+		$edit mark set insert $oldpos
+	}
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-edit-sec-extern {} {
+	global song
+	store-cursec idx sec
+	exec s4s-external-texteditor [s4s-song::path $song(root) section $sec]
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-print {} {
+	global song
+	exec s4s-print-song $song(root)
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-move-up {edit} {
+	global song
+	lassign [split [$edit index insert] "."] linenum col
+	
+	if {$linenum > 1} {
+		$edit edit separator
+		set lp [$edit get {insert linestart} {insert lineend}]
+		set l [$edit get {insert - 1 line linestart} {insert - 1 line lineend}]
+		$edit replace {insert linestart} {insert lineend} $l
+		$edit replace {insert - 1 line linestart} {insert - 1 line lineend} $lp
+		incr linenum -1
+		$edit mark set insert "$linenum.$col"
+	}
+}
+
+# ---------------------------------------------------------------------------
+
+proc action-move-down {edit} {
+	global song
+	lassign [split [$edit index insert] "."] linenum col
+	lassign [split [$edit index end] "."] endline endcol
+	
+	if {$linenum < [expr {$endline - 1}]} {
+		$edit edit separator
+		set ln [$edit get {insert linestart} {insert lineend}]
+		set l [$edit get {insert + 1 line linestart} {insert + 1 line lineend}]
+		$edit replace {insert linestart} {insert lineend} $l
+		$edit replace {insert + 1 line linestart} {insert + 1 line lineend} $ln
+		incr linenum
+		$edit mark set insert "$linenum.$col"
+	}
+}
+
+# ===========================================================================
+
+# Bootup
+# ======
+
+load-song
+

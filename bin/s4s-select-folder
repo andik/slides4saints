@@ -1,0 +1,63 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+package require s4s-song 1.0
+package require s4s-dialog 1.0
+package require s4s-table 1.0
+package require s4s-toolbar 1.0
+
+set title [lindex $argv 0]
+
+proc ok {} {
+	puts [s4s-table::selected-elem .dlg.file]
+	exit
+}
+
+proc create-dir {} {
+	set name [exec s4s-dlg-get-string "Create Directory" "Name directory (created in selected dir):"]
+	if {$name ne ""} {
+		set dir [file join $::env(S4S_DATA_DIR) [s4s-table::selected-elem .dlg.file] $name]
+		file mkdir $dir
+		set ::dirs [list]
+		s4s-table::set-elems .dlg.file [list-dir {}]
+		tk_messageBox -message [list-dir {}]
+	}
+}
+
+set dirs [list]
+proc list-dir {dirname} {
+	lappend ::dirs $dirname
+
+	# add root directory
+	set root [file join $::env(S4S_DATA_DIR) $dirname]
+
+	# add subdirectories
+	foreach fn [glob -type d -nocomplain -tails -directory $root "*"] {
+		if {![string match ".s4s-*" [file extension $fn]]} {
+			list-dir [file join $dirname $fn]
+		}
+	}
+
+	return $::dirs
+}
+
+wm iconify .
+wm withdraw .
+
+s4s-dialog .dlg -title $title -content {
+	s4s-toolbar .dlg.tb0 {
+		ttk::button "Create..." {create-dir} {}
+	}
+
+	s4s-table::create .dlg.file Directory [list-dir {}]
+	pack .dlg.file -expand 1 -fill both
+	
+	.dlg.file configure -width 400
+
+	bind .dlg         <Down>     {s4s-table::move-next .dlg.file}
+	bind .dlg         <Up>       {s4s-table::move-prev .dlg.file}
+	bind .dlg.file.tv <Double-1> {ok}
+} -ok ok -cancel
+
+exit

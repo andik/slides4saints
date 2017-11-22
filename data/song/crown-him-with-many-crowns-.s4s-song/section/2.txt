@@ -1,0 +1,12 @@
+chords	C	~	~	Am	~	F	~	Em	F	~	Gsus	G
+eng	Crown	Him	the	Lord	of	life,	who	triumphed	o’er	the	grave;	~
+
+chords	G	C	~~~Am	D	~	G	C	G	~	D	~	G	G7
+eng	And	rose	victorious	in	the	strife,	for	those	He	came	to	save;	~
+
+chords	~	C	~	~	F	~	D	~	~	~	G	G7
+eng	His	glories	now	we	sing,	who	died	and	rose	on	high,	~
+
+chords	~	C	~F	Dm7	~	C	~	Dm7	~	G	~	C
+eng	Who	died	eternal	life	to	bring	and	lives	that	death	may	die.
+

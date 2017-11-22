@@ -1,0 +1,11 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+set move_to [exec s4s-select-folder]
+
+puts $move_to
+
+set setlist [lindex $argv 0]
+
+file rename $setlist [file join $env(S4S_DATA_DIR) $move_to [file tail $setlist]]

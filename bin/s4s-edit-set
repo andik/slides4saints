@@ -1,0 +1,281 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+# S4S Setlist Editor
+#
+# Edit S4S Setlists...
+
+set setlist_filename [lindex $argv 0]
+set lastdir "."
+set repository [list]
+set save_needed 0
+
+grid rowconfigure . 1 -weight 1
+grid columnconfigure . 0 -weight 1
+grid columnconfigure . 2 -weight 1
+grid columnconfigure . 3 -weight 2
+
+# Menu
+# ----
+
+menu .m 
+.m add cascade -label "File" -menu .m.file
+.m add cascade -label "Edit" -menu .m.edit
+.m add cascade -label "Set" -menu .m.set
+
+
+menu .m.file                                     -tearoff 0
+if {$setlist_filename eq ""} {
+	.m.file add command -label "New"                 -command action-file-new -accelerator Ctrl-N
+	.m.file add separator
+	.m.file add command -label "Open..."             -command action-file-open -accelerator Ctrl-O
+	.m.file add separator
+	.m.file add command -label "Save"                -command action-file-save -accelerator Ctrl-S
+	.m.file add command -label "Save As.."           -command action-file-save-as
+	.m.file add separator
+	.m.file add command -label "Exit"                -command exit
+} else {
+	.m.file add command -label "Save"                -command action-file-save -accelerator Ctrl-S
+	.m.file add command -label "Save As.."           -command action-file-save-as
+	.m.file add separator
+	.m.file add command -label "Exit"                -command exit
+}
+
+menu .m.edit                                     -tearoff 0
+.m.edit add command -label "Move up"             -command action-edit-move-up -accelerator Ctrl-Up
+.m.edit add command -label "Move down"           -command action-edit-move-down -accelerator Ctrl-Down
+.m.edit add command -label "Add from Repository" -command action-edit-add -accelerator Ctrl-Return
+.m.edit add command -label "Remove"              -command action-edit-remove -accelerator Delete
+
+menu .m.set                                      -tearoff 0
+.m.set add command -label "Start Presentation"   -command action-present
+
+. configure -menu .m
+
+# save-clean up
+wm protocol . WM_DELETE_WINDOW upon-exit
+
+
+# Global Shortcuts
+# ----------------
+
+bind . <Control-Key-1> {focus .l}
+bind . <Control-Key-2> {focus .s}
+bind . <Control-s>     {action-file-save}
+# bind . <Control-o>     {action-file-open}
+# bind . <Control-n>     {action-file-new}
+bind . <Control-Key-f> {action-edit-find}
+bind . <Escape>        {exit}
+
+# Toolbar
+# ------
+pack [frame .tb] -fill x
+pack [button .tb.save   -text "Save"         -width 10 -command action-file-save] -side left
+pack [label  .tb.sep1   -width 2] -side left
+pack [button .tb.prsnt  -text "Present..."   -width 10 -command action-present] -side left
+pack [label  .tb.sep2   -width 2] -side left
+pack [button .tb.add    -text "Add..."       -width 10 -command action-edit-add] -side left
+pack [button .tb.rm     -text "Delete"       -width 10 -command action-edit-remove] -side left
+pack [label  .tb.sep3   -width 2] -side left
+pack [button .tb.up     -text "Move Up"      -width 10 -command action-edit-move-up] -side left
+pack [button .tb.down   -text "Move Down"    -width 10 -command action-edit-move-down] -side left
+pack [label  .tb.sep4   -width 2] -side left
+pack [button .tb.params -text "Parameters..." -width 10 -command action-parameters] -side left
+
+
+# Main List Editor
+# ----------------
+
+
+ttk::treeview .l 
+pack .l -expand 1 -fill both
+
+.l configure      -columns [list type name path params] -show headings
+.l column type    -minwidth 2 -stretch 0 -width 50
+.l column name    -minwidth 20 -stretch 1
+.l column path    -minwidth 20 -stretch 1
+.l heading type   -text "Type"
+.l heading name   -text "Name"
+.l heading path   -text "Path"
+.l heading params -text "Parameters"
+
+bind .l <F4>      "action-edit-entry .l; break"
+bind .l <FocusIn> "activate-list .l; break"
+bind .l <Delete>        {action-edit-remove    ; break}
+bind .l <Control-Up>    {action-edit-move-up   ; break}
+bind .l <Control-Down>  {action-edit-move-down ; break}
+bind .l <Control-+>  {action-edit-add       ; break}
+bind .l <Control-i>  {action-edit-add       ; break}
+bind .l <Control-Return>  {action-edit-add       ; break}
+bind .l <Tab>           {focus .s; break}
+bind .l <Escape>        {exit; break}
+
+proc filename-to-entry {fn} {
+	return [file tail [file rootname $fn]]
+}
+
+proc filename-to-type {fn} {
+	return [regsub -all {\.s4s-} [file extension $fn] ""]
+}
+
+proc add-entry-from-string {line} {
+	set cols [split $line]
+	set type [lindex $cols 0]
+	set params [lrange $cols 1 end-1]
+	set fn [lindex $cols end]
+
+	set name [filename-to-entry $fn]
+	set path [file dirname $fn]
+	.l insert {} end -values [list $type $name $path $params] -tags all
+}
+
+proc refresh-setlist {} {
+	global fobj setlist_filename
+	.l delete [.l tag has all]
+	if {$setlist_filename ne ""} {
+		set fobj [open $setlist_filename]
+		while {[gets $fobj line] >= 0} {
+    	add-entry-from-string $line
+		}
+		close $fobj
+	}
+
+	if {[llength [.l tag has all]] > 0} {
+		.l selection set [lindex [.l tag has all] 0]
+	}
+}
+
+proc action-edit-move-up {} {
+	global save_needed
+	foreach el [.l selection] {
+	 	set idx [.l index $el]
+	 	.l move $el {} [expr {$idx - 1}]
+	}
+	set save_needed 1
+}
+
+proc action-edit-move-down {} {
+	global save_needed
+	foreach el [.l selection] {
+	 	set idx [.l index $el]
+	 	.l move $el {} [expr {$idx + 1}]
+	}
+	set save_needed 1
+}
+
+proc action-edit-add {} {
+	global save_needed
+	set line [exec "s4s-select"]
+	if {$line ne ""} {
+		add-entry-from-string $line
+		set save_needed 1
+	}
+}
+
+proc action-edit-remove {} {
+	global setlist_filename
+	foreach el [.l selection] {
+		set next [.l next $el]
+		if {$next eq ""} {
+			set next [.l prev $el]
+		}
+		.l delete $el
+		.l selection set $next
+		.l focus [lindex [.l selection] 0] ;# fix fuer ein tk problem
+	}
+	set save_needed 1
+}
+
+proc action-file-new {} {
+	global setlist_filename
+	set setlist_filename {}
+	refresh-setlist
+}
+
+proc action-file-open {} {
+	global setlist_filename lastdir
+	set types {
+		{"S4S Setlist" ".s4s-set"}
+	}
+	set fn [tk_getOpenFile -filetypes $types -initialdir $lastdir]
+	if {$fn ne ""} {
+		set setlist_filename $fn
+		refresh-setlist
+	}
+}
+
+proc action-file-save {} {
+	global setlist_filename save_needed
+	if {$setlist_filename eq ""} {
+			action-file-save-as
+		} else {
+			set fobj [open $setlist_filename "w"]
+			foreach el [.l tag has all] {
+				set values [.l item $el -values]
+				lassign $values type name path params
+				if {[llength $params] > 0} {
+					set out [concat $type $params [file join $path "$name.s4s-$type"]]
+				} else {
+					set out [concat $type [file join $path "$name.s4s-$type"]]
+				}
+				puts $fobj [join $out " "]
+			}
+			close $fobj
+		}
+	set save_needed 0
+}
+
+proc action-file-save-as {} {
+	global setlist_filename lastdir
+	set types {
+		{"S4S Setlist" ".s4s-set"}
+	}
+	set fn [tk_getSaveFile -filetypes $types -defaultextension ".s4s-set" -initialdir $lastdir]
+	if {$fn ne ""} {
+		set setlist_filename $fn
+		set lastdir [file dirname $fn]
+		action-file-save
+	}
+}
+
+proc action-present {} {
+	global setlist_filename
+	exec "s4s-present-set" $setlist_filename &
+}
+
+proc activate-list {lst} {
+	if {[llength [$lst tag has all]] > 0 && [llength [$lst selection]] == 0} {
+		$lst selection set [lindex [$lst tag has all] 0]
+	}
+	$lst focus [lindex [$lst selection] 0]
+}
+
+proc action-parameters {} {
+	global save_needed
+	set selidx [lindex [.l selection] 0]
+	set values [.l item $selidx -values]
+	lassign $values type name path params
+	set params [exec s4s-params-song [file join $path "$name.s4s-$type"] {*}$params]
+	.l item $selidx -values [list $type $name $path $params]
+	set save_needed 1
+}
+
+proc upon-exit {} {
+	global save_needed
+	if {$save_needed} {
+		set r [tk_messageBox -message "Setlist unsaved. Save?" -type yesnocancel]
+		switch -- $r {
+			yes { action-file-save; exit }
+			no  { set save_needed 0; exit }
+			default {}
+		}
+	} else {
+		exit
+	}
+}
+
+refresh-setlist
+
+focus .l
+activate-list .l

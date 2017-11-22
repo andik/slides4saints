@@ -1,0 +1,26 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+package require s4s-print 1.0
+package require s4s-set   1.0
+
+# prepare the file's header
+s4s-print::begin
+s4s-print::break
+
+set setlist [lindex $argv 0]
+
+s4s-set::foreach-setlist-entry $setlist type fn params {
+	switch -exact -- $type {
+  	song {
+  		exec "s4s-print-song" $fn
+  	}
+  	default {
+  		# ignore other commands
+  	}
+  }
+}
+
+s4s-print::resume
+s4s-print::end

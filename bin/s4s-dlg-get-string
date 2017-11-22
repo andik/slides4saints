@@ -1,0 +1,45 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.dlg.6 "$0" "$@"
+
+# query the user for a string...dlg somehow such a thing did not made it into tk..
+
+proc action-ok {} {
+	global text
+	puts $text
+	exit 0
+}
+
+proc action-cancel {} {
+	exit 0
+}
+
+set title [lindex $argv 0]
+set message [lindex $argv 1]
+set text [lindex $argv 2]
+
+toplevel .dlg
+wm withdraw .
+
+tk appname $title
+
+wm attributes .dlg -topmost 1 -toolwindow 1
+wm title .dlg $title
+
+label .dlg.msg -text $message -width 30
+pack .dlg.msg -fill both -expand 1
+
+entry .dlg.edit -textvariable text
+pack .dlg.edit -fill x
+
+button .dlg.ok -text "Ok" -width 10 -command action-ok
+button .dlg.cancel -text "Cancel" -width 10 -command action-cancel
+pack .dlg.cancel -side right
+pack .dlg.ok -side right
+
+bind .dlg.edit <Escape> {action-cancel; break}
+bind .dlg.edit <Return> {action-ok; break}
+
+focus .dlg.edit
+wm state .dlg normal
+

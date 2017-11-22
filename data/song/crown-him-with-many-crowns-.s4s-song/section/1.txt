@@ -1,0 +1,12 @@
+chords	C	~	~	Am	F	~	Em	~F	~	Gsus	G
+eng	Crown	Him	with	many	crowns,	the	Lamb	upon	His	throne;	~
+
+chords	G	C	~	Am	D	G	C	G	D	~	G	G7
+eng	Hark	how	the	heavenly	anthem	drowns,	all	music	but	its	own;	~
+
+chords	~	C	~	~	~	F	~	D	~	~	~	G	G7
+eng	A	wake	my	soul	and	sing,	of	Him	who	died	for	Thee,	~
+
+chords	~	C	~	F	~	Dm7	C	~	Dm7	~G	~	C
+eng	And	hail	Him	as	Thy	matchless	King	through	all	eterni	-	ty.
+

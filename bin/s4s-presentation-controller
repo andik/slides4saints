@@ -1,0 +1,381 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec wish8.6 "$0" "$@"
+
+# a very simple control module for slides4saints
+#
+# this is a very basic control-application
+# for slides4saints. it basically shows up the principles
+# how to write such an application so that anyone can create one by itself
+#
+
+fconfigure stdin -encoding utf-8
+fconfigure stdout -encoding utf-8
+
+# read the input
+set lines [split [read stdin] "\n"]
+
+set data(preview) [list]
+set data(slides)  [list]
+set data(labels)  [list]
+set data(jump)    [dict create]
+set data(black)   0
+
+set jumpkeys [split "0123456789abcdefghijklmnopqrstuvwxyz" ""]
+
+#
+# UI - this lines define basically what's displayed in the window
+#
+
+# Slides list
+listbox .slides -listvariable data(labels) -width 60 -height 40 
+bind .slides <<ListboxSelect>> action-select
+bind .slides <Right> {action-jump-next; break}
+bind .slides <Left> {action-jump-prev; break}
+bind .slides <space> {action-next; break}
+bind .slides <Control-b> {action-toggle-black; break}
+
+foreach key $jumpkeys {
+	bind .slides <KeyPress-$key> "action-jump $key"
+}
+
+frame .tb 
+checkbutton .tb.black -text "Black Screen" -variable data(black) -command action-black
+pack .tb.black -side left
+
+label .curslide -textvariable current_slide_preview -height 20 -width 40 -relief flat -bg #444 -fg #fff
+label .nextslide -textvariable next_slide_preview -height 20 -width 40 -relief flat -bg #444 -fg #fff
+
+label .status -textvariable status -justify left
+
+
+grid .tb -column 1 -row 0 -columnspan 2  -sticky nsew
+grid .slides -column 1 -row 1 -rowspan 2 -padx 4 -pady 4 -sticky nsew
+grid .curslide -column 2 -row 1 -padx 4 -pady 4 -sticky nsew
+grid .nextslide -column 2 -row 2 -padx 4 -pady 4 -sticky nsew
+grid .status -column 1 -row 3 -columnspan 2  -sticky nsew
+
+grid rowconfigure    . 1 -weight 1
+grid rowconfigure    . 2 -weight 1
+grid columnconfigure . 1 -weight 3
+grid columnconfigure . 2 -weight 1
+grid columnconfigure . 3 -weight 1
+
+
+#
+# Input parsing
+#
+
+proc parse-input {lines} {
+	global data
+
+	# create a list of 
+	# path1 lines1 path2 lines2 ... 
+	# which means flatten the hierarchical input
+
+	set slides [list]
+	set path [list]
+	set current_slide [list]
+
+	foreach line $lines {
+		if [regexp {^\s*([:]?\w+)\s*(.*)} $line _ cmd rest] {
+			switch -- $cmd {
+				:begin {
+					if [regexp {^(\w+)\s*(.*)} $rest _ type name] {
+						if {$name eq ""} {
+							set name [generate-secname $path]
+						}
+						lappend path $name
+					}
+				}
+				:end {
+					set path [lrange $path 0 end-1]	;# pop
+				}
+				slide {
+					lappend slides $path $current_slide
+					set current_slide [list]
+				}
+				default {
+					lappend current_slide $cmd $rest
+				}
+			}
+		}
+	}
+
+	# append the text of the last slide
+	if {[llength $current_slide] > 0} {
+		lappend slides $path $current_slide
+		set current_slide [list]
+	}
+
+	return $slides
+}
+
+#
+# Intermediate Results (out of slides list)
+#
+
+proc slides-to-labels {slides} {
+	return [lmap {path slide} $slides {
+		string cat \
+			[string repeat "    " [expr {[llength $path] - 1}]] [lindex $path end] \
+			" : " \
+			[join [slide-to-text $slide] " / "]
+	}]
+}
+
+proc slides-to-preview {slides} {
+	return [lmap {path slide} $slides {
+		join [slide-to-text $slide] "\n"
+	}]
+}
+
+# parse jumping points (keys) out of the slides
+# which are sections with a single-letter name like '1', 'c', ...
+# sections with a single letter name can be jumped to by just
+# pressing the corresponding letter on the keyboard
+proc slides-to-jumpmarks {slides} {
+	global jumpkeys
+
+	set jumpmarks [dict create]
+	set lastpath {}
+	set index 0
+
+	foreach {path slide} $slides {
+		set parent [lrange $path 0 end-1]
+		set key    [lindex $path end]
+		if {[lsearch $jumpkeys $key] > -1} {
+			if {![dict exists $jumpmarks $parent $key]} {
+				dict set jumpmarks $parent $key $index
+			}
+
+		}
+		incr index
+	}
+
+	return $jumpmarks
+}
+
+# call a body upon all top sections of the slides.
+# provides a custom "results" variable to store stuff
+# a poor replacement of python iterators
+proc slides-iter-topsecs {slides resultvar body } {
+	upvar 1 $resultvar result
+	set lastsec {}
+	set index 0
+	set lastidx 0
+
+	foreach {path slide} $slides {
+		set topsec [lindex $path 0]
+		if {$topsec ne $lastsec} {
+			eval $body
+			set lastsec $topsec
+			set lastidx $index
+		}
+		incr index
+	}
+}
+
+# gets the index for a given top section
+proc slides-to-topsec-idx {slides} {
+	set idxtab [dict create]
+
+	slides-iter-topsecs $slides idxtab {
+		dict set result $topsec $index
+	}
+
+	return $idxtab
+}
+
+# gets the next top section for a given top section
+proc slides-to-topsec-next {slides} {
+	set nexttab [dict create]
+
+	slides-iter-topsecs $slides nexttab {
+		dict set result $lastsec $index
+	}
+
+	return $nexttab	
+}
+
+# gets the previous top section for a given top section
+proc slides-to-topsec-prev {slides} {
+	set prevtab [dict create]
+
+	slides-iter-topsecs $slides prevtab {
+		dict set result $topsec $lastidx
+	}
+
+	return $prevtab	
+}
+
+# if a :begin statement had no name supplied, we generate one.
+proc generate-secname {path} {
+	return ""
+}
+
+set secname_counter [dict create]
+
+# this is a minimal 'inline-display' for the preview sections
+# it does parse some slide commands and return the resulting lines
+proc slide-to-text {slide} {
+	return [lmap {cmd rest} $slide {
+		switch  -- $cmd {
+			line    { expr {"[string trim $rest]"}      }
+			subline { expr {"([string trim $rest])"}  }
+			default { continue          }
+		}
+	}]
+}
+
+#
+# Display Handling
+#
+# the actual presentation is delegated to an external application 
+# which will just be called 'display' here.
+# This is to keep all s4s tools 'doing one thing well', which increases
+# maintainability and extensibilty incredible.
+#
+# The 'display' is connected via a pipe to it's stdin.
+# we read any output of the display and restart it if it does fail.
+# When this application exists we do kill the display process.
+#
+
+proc read-from-display {} {
+	global display
+	# read away and throw away any output of the client window
+ 	if {[gets $display line] < 0} {
+    if {[eof $display]} {
+       close $display
+       open-display
+       return
+    }
+	}
+}
+
+proc open-display {} {
+	global display
+	set display [open "| s4s-display" "r+"]
+
+	# both lines enable asynchronous read/write cooparating with the ui events
+	fconfigure $display -blocking false
+	fileevent $display readable "read-from-display"
+}
+
+
+
+#
+# UI Events
+#
+# all User-dependend event handling is done below
+#
+
+proc update-ui {} {
+	global lines data
+	set data(slides)  [parse-input $lines]
+
+	# out of the slideslist calculate all our caches and
+	# intemediate results
+	set data(preview) [slides-to-preview $data(slides)]
+	set data(labels)  [slides-to-labels  $data(slides)]
+	set data(jump)    [slides-to-jumpmarks $data(slides)]
+	set data(next)    [slides-to-topsec-next $data(slides)]
+	set data(prev)    [slides-to-topsec-prev $data(slides)]
+	set data(idx)     [slides-to-topsec-idx  $data(slides)]
+}
+
+proc action-select {} {
+	global data display status current_slide_preview next_slide_preview
+	set sel [.slides curselection]
+	if {$sel ne ""} {
+		set current_slide_preview [lindex $data(preview) $sel]
+		set next_slide_preview    [lindex $data(preview) $sel+1]
+		set path [lindex $data(slides)  [expr {$sel*2}]]
+		set slide                 [lindex $data(slides)  [expr {$sel*2+1}]]
+		set parent [lrange $path 0 end-1]
+
+		puts $display "clear"
+		foreach {cmd rest} $slide {
+			puts $display "$cmd $rest\n"
+		}
+		puts $display "done"
+		flush $display
+
+		if [dict exists $data(jump) $parent] {
+			set keys [lsort [dict keys [dict get $data(jump) $parent]]]
+			set status "Keys to jump to slides [join $keys {, }]"
+		}
+	}
+}
+
+proc action-jump {key} {
+	global data
+	set sel  [.slides curselection]
+	set path [lindex $data(slides)  [expr {$sel*2}]]
+	set parent [lrange $path 0 end-1]
+
+	if [dict exists $data(jump) $parent $key] {
+		action-goto [dict get $data(jump) $parent $key]
+	}
+}
+
+proc action-jump-next {} {
+	global data
+	set sel  [.slides curselection]
+	set path [lindex $data(slides)  [expr {$sel*2}]]
+	set topsec [lindex $path 0]
+
+	if [dict exists $data(next) $topsec] {
+		action-goto [dict get $data(next) $topsec]
+	}
+}
+
+proc action-jump-prev {} {
+	global data
+	set sel  [.slides curselection]
+	set path [lindex $data(slides)  [expr {$sel*2}]]
+	set topsec [lindex $path 0]
+	set topsecidx [dict get $data(idx) $topsec]
+
+	if {$sel > $topsecidx} {
+		action-goto $topsecidx
+	} elseif [dict exists $data(prev) $topsec] {
+		action-goto [dict get $data(prev) $topsec]
+	}
+}
+
+proc action-goto {idx} {
+	.slides selection clear 0 end
+	.slides selection set $idx
+	.slides activate $idx
+	.slides see $idx
+	action-select
+}
+
+proc action-toggle-black {} {
+	global data
+	set data(black) [expr {$data(black) ? 0 : 1}]
+	action-black
+}
+
+proc action-black {} {
+	global data display
+	set on_off [expr {$data(black) ? "on" : "off"}]
+	puts $display "black $on_off\n"
+	flush $display
+}
+
+proc action-next {} {
+	global data
+	set sel  [.slides curselection]
+	if {($sel + 1) < [.slides size]} {
+		action-goto [expr {$sel + 1}]
+	}
+}
+
+bind . <Destroy> { close $display }
+open-display
+update-ui
+focus .slides
+
+

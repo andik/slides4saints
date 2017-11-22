@@ -1,0 +1,19 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+if {[info exists env(S4S_EDITOR)]} {
+	exec {*}$env(S4S_EDITOR) [lindex $argv 0]
+} elseif {[info exists env(EDITOR)]} {
+	exec {*}$env(EDITOR) [lindex $argv 0]
+} else {
+	# try various editors - this is just a random list...
+	set editors [list notepad emacs nano sam vim vi mg]
+	foreach editor $editors {
+		puts "$editor"
+		if {![catch {exec $editor [lindex $argv 0]}]} {
+			break
+		}
+	}
+}
+

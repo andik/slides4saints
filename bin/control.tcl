@@ -1,0 +1,193 @@
+#!/usr/bin/wish
+#
+# a very simple control module for slides4saints
+#
+# this is a very basic control-application
+# for slides4saints. it basically shows up the principles
+# how to write such an application so that anyone can create one by itself
+#
+
+# read the input
+set lines [split [exec "set-slides [lindex $argv 1"] "\n"]
+
+#
+# Utility functions
+#
+
+# this is a minimal 'inline-display' for the preview sections
+# it does parse some slide commands and return the resulting lines
+proc displaylines {slidelines} {
+	# TODO maybe this function should not do this here and instead
+	# we should use some external tool for decoding the display format
+	# to stay DRY. I think of some kind of 'console display'
+
+	# we use a global state
+	global displaylines_state
+
+	foreach line $slidelines {
+		set line [split $line]
+		switch -exact -- [lindex $line 0] {
+			line {
+				lappend displaylines_state [string trim [string range $line 5 end]]
+			}
+			#subline {
+			#	lappend displaylines_state "([string trim [string range $line 8 end]])"
+			#}
+			clear {
+				set displaylines_state [list]
+			}
+			default {}
+		}
+	}
+	return $displaylines_state
+}
+
+
+#
+# UI - this lines define basically what's displayed in the window
+#
+
+listbox .slides -listvariable titles -width 60 -height 40
+label .curlines -textvariable current_lines -height 20 -width 40 -relief flat -bg #444 -fg #fff
+label .nextlines -textvariable next_lines -height 20 -width 40 -relief flat -bg #444 -fg #fff
+grid .slides -column 1 -row 1 -rowspan 2 -padx 4 -pady 4 -sticky nsew
+grid .curlines -column 2 -row 1 -padx 4 -pady 4 -sticky nsew
+grid .nextlines -column 2 -row 2 -padx 4 -pady 4 -sticky nsew
+grid rowconfigure    . 1 -weight 1
+grid columnconfigure . 1 -weight 3
+grid rowconfigure    . 2 -weight 1
+grid columnconfigure . 2 -weight 1
+
+
+#
+# Input parsing
+#
+# reads the output of the make-set.sh script and processes it into a lightweight
+# structure which we can reuse later easily
+#
+# we create multiple lists: on entry in any list for each slide.
+#
+#   - slides     - the actual commands to send to the display
+#   - slidetexts - text to display in preview label
+#   - titles     - text to display in Slide-selection-listbox
+#   - indexes    - a path to the slide (which consists of concat'ing the
+#                  names of all sections until the current slide + a slide
+#                  number in the actual section)
+#
+
+set path [list ]
+set mdlchilds [dict create]
+set mdllines [dict create]
+set mdlsellines ""
+set counter [dict create]
+set sep "::"
+set slidelines {}
+set slides [list]
+set titles [list]
+set indexes [list]
+
+# parse the input
+foreach line [split $lines "\n"] {
+	set line [split $line]
+	set cmd [lindex $line 0]
+
+	switch -exact -- $cmd {
+		:begin {
+			set type [lindex $line 1]
+			set secname [join [lrange $line 2 end] " "]
+
+			# if a section doesn't have a key provided, simply generate one
+			if {[llength $secname] == 0} {
+				if {![dict exists $counter [join $path $sep]]} {
+					dict set counter [join $path $sep] 0
+				}
+				set secname [dict get $counter [join $path $sep]]
+				dict incr counter [join $path $sep]
+			}
+		
+			lappend path [join $secname " "]
+
+			# this appends the topmost sections as a standalone entries to the lists
+			if {[llength $path]==1} {
+				lappend slides {}
+				lappend slidetexts {}
+				lappend titles [join $path $sep]
+			}
+	
+			set slidelines [list]
+		}
+		:end {
+			# append the data of the slide to the lists.
+			if {[llength $slidelines] > 0} {
+				set todisplay [displaylines $slidelines]
+				lappend slides $slidelines
+				lappend slidetexts $todisplay
+				lappend titles "[lindex $path end-1] :        [join $todisplay { / }]"
+				lappend indexes [join $path $sep]
+			} else {
+
+			}
+			set path [lrange $path 0 end-1]	
+			set slidelines [list]
+		}
+		default {
+			lappend slidelines $line
+		}
+	}
+}
+
+#
+# Display Handling
+#
+# the actual presentation is delegated to an external application 
+# which will just be called 'display' here.
+# This is to keep all s4s tools 'doing one thing well', which increases
+# maintainability and extensibilty incredible.
+#
+# The 'display' is connected via a pipe to it's stdin.
+# we read any output of the display and restart it if it does fail.
+# When this application exists we do kill the display process.
+
+proc read-from-display {} {
+	global display
+	# read away and throw away any output of the client window
+ 	if {[gets $display line] < 0} {
+    if {[eof $display]} {
+       close $display
+       open-display
+       return
+    }
+	}
+}
+
+proc open-display {} {
+	global display
+	set display [open "| wish ./presenter.tcl" "r+"]
+
+	# both lines enable asynchronous read/write cooparating with the ui events
+	fconfigure $display -blocking false
+	fileevent $display readable "read-from-display"
+}
+
+bind . <Destroy> { close $display }
+
+open-display
+
+#
+# UI Events
+#
+# all User-dependend event handling is done below
+#
+
+bind .slides <<ListboxSelect>> {
+	set sel [.slides curselection]
+	set current_lines [join [lindex $slidetexts $sel] "\n"]
+	set next_lines [join [lindex $slidetexts $sel+1] "\n"]
+	puts $display [join [lindex $slides $sel] "\n"]
+	flush $display
+}
+
+focus .slides
+
+
+

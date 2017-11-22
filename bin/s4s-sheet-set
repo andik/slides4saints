@@ -1,0 +1,25 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+package require s4s-set 1.0
+
+set setlist [lindex $argv 0]
+
+set songs [list]
+
+s4s-set::foreach-setlist-entry $setlist type fn params {
+  switch -exact -- $type {
+    song {
+      # somehow we currently need the redirection of stdout to stdout in windows...
+      lappend songs $fn
+    }
+    default {
+      # ignore other commands
+    }
+  }
+}
+
+puts $songs
+
+exec s4s-sheet-song {*}$songs

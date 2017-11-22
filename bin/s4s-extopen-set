@@ -1,0 +1,9 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+package require s4s-set 1.0
+
+set setlist [lindex $argv 0]
+
+exec s4s-external-texteditor $setlist

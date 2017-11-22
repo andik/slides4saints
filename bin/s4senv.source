@@ -1,0 +1,10 @@
+# source this file in s4s root
+export PATH=bin:$PATH
+export S4S_DATA_DIR=`pwd`/data
+
+
+# display configuration options
+export S4S_DISPLAY_FONT_SIZE_SCALE=0.95
+export S4S_DISPLAY_FONT_SIZE_MIN=10
+export S4S_DISPLAY_FONT_SIZE_MAX=50
+export S4S_DISPLAY_BG_COLOR=#200

@@ -1,0 +1,147 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+set data_dir data/
+
+proc update-files-for {type} \
+{
+	global files elems data_dir
+	set dir [file join $data_dir $type]
+	set typefiles [glob -nocomplain -tails -directory $dir  *.s4s-*]
+
+	set files($type) [list]
+	foreach fn $typefiles {
+		lappend files($type) [file rootname $fn]
+	}
+	set elems($type) [set files($type)]
+}
+
+# Types Notebook and Files therein
+# --------------------------------
+
+set types [glob -type d ${data_dir}/*]
+
+pack [ttk::notebook .nb] -fill both -expand 1
+ttk::notebook::enableTraversal .nb
+
+foreach dir $types {
+	set type [file tail $dir]
+
+	# TODO i18n
+	.nb add [frame .nb.$type] -text [string totitle "${type}s"]
+
+	update-files-for $type
+
+	listbox .nb.$type.elems -listvariable elems($type) -width 30
+	pack .nb.$type.elems -fill both -expand 1
+
+}
+
+
+
+# Toolbar
+# -------
+pack [frame .toolbar] -fill x
+
+# TODO i18n
+pack [button .toolbar.create  -text "Add..." -command {action-create}] -side left
+pack [button .toolbar.delete  -text "Delete..." -command {action-delete}] -side left
+pack [label .toolbar.spacer  -text "  " ] -side left
+pack [button .toolbar.edit  -text "Edit..." -command {action-do edit}] -side left
+pack [button .toolbar.print -text "Print..." -command {action-do print}] -side left
+pack [label .toolbar.spacer2  -text "  " ] -side left
+pack [button .toolbar.present -text "Present..." -command {action-do present}] -side left
+pack [label .toolbar.spacer3  -text "  " ] -side left
+pack [label .toolbar.searchlbl -text "Search:"] -side left
+pack [entry .toolbar.search -text "slides4saints" -validate all -vcmd "filter-list %P"] -side left
+pack [button .toolbar.searchcl -text "X" -command {action-clear-search}] -side left
+pack [label .toolbar.logo -text "slides4saints"] -side right
+
+wm title . "slides4saints manager"
+
+bind .toolbar.search <Escape> action-clear-search
+
+# User actions
+# ------------
+
+# do something with the file (edit, print, ...)
+# this is a single action because every action is forwarded
+# to an external script to keep this manager small in LOC
+proc action-do {action} {
+	# we get type and filename of the file
+	set type     [get-selected-type]
+	set basename [get-selected-name]
+	set filename [entry-filename $type $basename]
+
+	# forward the selected action to the correct binary for the type... thats it
+	# the unix way of doing this is really incredible easy...
+	exec "s4s-$action-$type" $filename &
+}
+
+proc action-clear-search {} \
+{
+	.toolbar.search delete 0 end
+}
+
+proc action-delete {} {
+	if {[ask-confirm "Delete Entry?"]} {
+		action-do delete
+	}
+
+	update-files-for [get-selected-type]
+}
+
+proc action-create {} {
+	set type [get-selected-type]
+	set basename [ask-string "Create $type" "name of the new $type:" ""]
+	set filename [entry-filename $type $basename]
+
+	if {$basename ne ""} {
+		exec "s4s-create-$type" $filename
+	}
+
+	update-files-for $type
+
+	# now edit that file...
+	exec "s4s-edit-$type" $filename &
+}
+
+# Utilities
+# ---------
+
+proc entry-filename {type name} {
+	global data_dir
+	return [file join $data_dir $type "$name.s4s-$type"]
+}
+
+proc get-selected-type {} {
+	return [lindex [split [.nb select] "."] end]
+}
+
+proc get-selected-name {} {
+	set selected [.nb select]
+	return  [$selected.elems get [$selected.elems curselection]]
+}
+
+# filters the currently selected list by the search widget - apple alike
+proc filter-list {filt} \
+{
+	global elems files
+	set selected [.nb select]
+	set type [lindex [split $selected "."] end]
+	set filter "*[regsub -all {(.)} $filt {\1*}]"
+	set elems($type) [lsearch -nocase -all -inline [set files($type)] $filter]
+	return 1
+}
+
+proc ask-confirm {msg} {
+	switch -- [tk_messageBox -message $msg -type yesno] {
+		yes { return 1}
+		no  { return 0}
+	}
+}
+
+proc ask-string {title message default} {
+	return [exec "s4s-dlg-get-string" $title $message $default]
+}

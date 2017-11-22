@@ -1,0 +1,44 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+package require s4s-song 1.0
+
+proc ask-string {title message default} {
+  return [exec "s4s-dlg-get-string" $title $message $default]
+}
+
+set name [ask-string "Create Song" "Name of the new Song" ""]
+
+if {$name ne ""} {
+  set basename [string cat [string map {
+    " "  "-"
+    "\t" {}
+    ","  {}
+    "#"  "-"
+    "ü"  "ue"
+    "Ü"  "Ue"
+    "ä"  "ae"
+    "Ä"  "Ae"
+    "ö"  "oe"
+    "Ö"  "Oe"
+    "ß"  "ss"
+  } $name] ".s4s-song"]
+
+  set filename [file join $env(S4S_DATA_DIR) song $basename]
+
+  file mkdir $filename
+  
+  file mkdir [file join $filename attachments]
+  file mkdir [file join $filename property]
+  file mkdir [file join $filename section]
+
+  s4s-song::set-prop $filename title    $name 
+  s4s-song::set-prop $filename language eng   
+  s4s-song::set-prop $filename order    "1 c" 
+  s4s-song::set-sec  $filename 1        "eng " 
+  s4s-song::set-sec  $filename c        "eng " 
+
+  puts -nonewline $filename
+}
+

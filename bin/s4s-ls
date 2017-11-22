@@ -1,0 +1,42 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+set type [lindex $argv 0]
+
+if {$type eq ""} {
+	set type "*"
+}
+
+set pattern [string cat "*.s4s-" $type]
+
+proc filename-to-print {fn} {
+	return [file tail [file rootname $fn]]
+}
+
+proc filename-to-type {fn} {
+	return [regsub -all {\.s4s-} [file extension $fn] ""]
+}
+
+proc list-dir {dirname} {
+	global env pattern
+
+	set root [file join $env(S4S_DATA_DIR) $dirname]
+
+	# add relevant files
+	foreach fn [lsort [glob -nocomplain -directory $root $pattern]] {
+		set type [filename-to-type $fn]
+		set name [filename-to-print $fn]
+		set printname [file join $dirname [file tail $fn]]
+		puts "$type $printname"
+	}
+
+	# add files from subdirectories
+	foreach fn [lsort [glob -nocomplain -directory $root "*"]] {
+		if {![string match ".s4s-*" [file ext $fn]]} {
+			list-dir [file join $dirname [file tail $fn]]
+		}
+	}
+}
+
+list-dir ""

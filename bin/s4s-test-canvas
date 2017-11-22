@@ -1,0 +1,52 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec wish "$0" "$@"
+
+package require s4s-canvas 1.0
+package require s4s-canvas-pencil 1.0
+
+console show
+
+font create PaintFont -family Arial -size 16
+
+button .b -text "Print..." -command print-canvas
+pack .b
+
+button .d -text "Delete" -command delete-on-canvas
+pack .d
+
+canvas .c -bg white
+pack .c -expand 1 -fill both
+s4s-canvas::hookup .c
+
+
+
+s4s-canvas::register-obj  .c text   draw-text -justify left -anchor nw -font PaintFont -fill red
+s4s-canvas-pencil::register-style line -fill #f00 -width 3
+s4s-canvas-pencil::hookup .c line
+
+
+proc print-canvas {} {
+	dict for {k el} [s4s-canvas::dump .c] {
+		puts "$k $el"
+	}
+}
+
+# ---------------------------------------------------------------------------
+
+proc delete-on-canvas {} {
+	s4s-canvas::delete-selected .c
+}
+
+# ---------------------------------------------------------------------------
+
+proc draw-text {path x y text args} {
+	return [$path create text $x $y -text $text {*}$args]
+}
+
+s4s-canvas::draw .c text 10 10 "this is a litte test"
+s4s-canvas::draw .c line 252.0 93.0 {0 0 100 0 100 100}
+s4s-canvas::draw .c line 469 48 {0.0 0.0 0.0 0.0 0.0 -1.0 1.0 -1.0 3.0 -1.0 4.0 1.0 6.0 4.0 9.0 7.0 13.0 12.0 18.0 19.0 23.0 24.0 30.0 29.0 36.0 34.0 42.0 39.0 48.0 46.0 56.0 51.0 65.0 56.0 75.0 61.0 86.0 67.0 98.0 72.0 106.0 77.0 115.0 80.0 122.0 82.0 129.0 83.0 135.0 84.0 140.0 84.0 146.0 84.0 152.0 84.0 156.0 83.0 161.0 81.0 165.0 79.0 169.0 78.0 171.0 76.0 174.0 74.0 178.0 72.0 180.0 69.0 184.0 66.0 186.0 63.0 189.0 60.0 191.0 57.0 194.0 54.0 196.0 51.0 197.0 47.0 199.0 44.0 200.0 41.0 201.0 39.0 201.0 37.0 202.0 35.0 204.0 32.0 205.0 29.0 207.0 26.0 209.0 22.0 209.0 20.0 210.0 19.0 211.0 18.0 211.0 17.0}
+
+
+s4s-canvas::set-mode .c line

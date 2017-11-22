@@ -1,0 +1,5 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+file delete [lindex $argv 0]

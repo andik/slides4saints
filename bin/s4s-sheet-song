@@ -1,0 +1,444 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec wish "$0" "$@"
+
+package require s4s-set
+package require s4s-toolbar
+package require s4s-dialog
+
+encoding system utf-8
+
+if { ![info exists env(S4S_USER)] } {
+    error "S4S_USER Environment Variable needs to be set"
+}
+
+if {[llength $::argv] == 0} {
+    error "you need to supply files on the command line for a working sheetview."
+}	  
+
+set maxpageid 0
+set pencil ""
+set Fill red
+set X 0
+set Y 0
+
+set text_annotations [list]
+
+set mode "none"
+
+set Pages [list]
+set CurPage 0
+
+set Files [lmap song $argv {file join $song sheets "$::env(S4S_USER).s4s-sheet"}]
+
+set Title ""
+set File [lindex $Files 0]
+set FileIdx 0
+set AttachmentDir ""
+
+set MidiProg 0
+
+set safeprops [list \
+	text -text \
+	text -font \
+	text -justify \
+	text -anchor \
+	text -fill \
+	line -width \
+	line -fill \
+	image -image \
+	image -anchor \
+]
+
+set Images [dict create]
+set CurImage ""
+set MidiProg 0
+
+font create PaintFont -family Arial -size 16
+
+proc edit-text-confirm {canvas tag} {
+	edit-text-apply $canvas $tag
+	destroy .dlg
+}
+
+proc edit-text-apply {canvas tag} {
+	$canvas itemconfigure $tag -text [.dlg.edit get 1.0 end]
+}
+
+proc edit-text-delete {canvas tag} {
+	$canvas delete $tag
+	destroy .dlg
+}
+
+proc edit-text {canvas tag} {
+	s4s-dialog .dlg "Edit Text" {
+
+		text .dlg.edit -font TkDefaultFont
+		pack [label .dlg.lbl -text "Press CTRL-Return to save or Escape to cancel"]
+		pack .dlg.edit -fill x -fill y
+
+		s4s-toolbar .dlg.toolbar [subst {
+			ttk::button  "Ok"      "edit-text-confirm $canvas $tag" {}
+			ttk::button  "Apply"   "edit-text-apply   $canvas $tag"  {}
+			ttk::button  "Delete"  "edit-text-delete  $canvas $tag"  {}
+			ttk::button  "Cancel"  "destroy .dlg"  {}
+		}]
+
+		pack .dlg.toolbar -fill x
+
+		.dlg.edit insert 1.0 [$canvas itemcget $tag -text]
+
+		bind .dlg.edit <Escape> {destroy .dlg; break}
+		bind .dlg.edit <Control-Return> "edit-text-confirm $canvas $tag; break"
+
+		focus .dlg.edit
+	}
+}
+
+proc edit-midi-confirm {} {
+	set ::MidiProg $::MidiProgEdit
+	destroy .dlg
+}
+
+proc edit-midi {} {
+	s4s-dialog .dlg "Edit Midi Program" {
+	
+		set ::MidiProgEdit $::MidiProg
+		entry .dlg.edit -textvariable MidiProgEdit
+
+		pack [label .dlg.lbl -text "Press CTRL-Return to save or Escape to cancel"]
+		pack .dlg.edit -fill x -fill y
+
+		s4s-toolbar .dlg.toolbar -common {-width 10} {
+			ttk::button "Ok"     "edit-midi-confirm" {}
+			ttk::button "Cancel" "destroy .dlg"      {}
+		}
+		pack .dlg.toolbar -fill x
+
+		bind .dlg.edit <Escape> {destroy .dlg; break}
+		bind .dlg.edit <Return> {"edit-midi-confirm"}
+
+		focus .dlg.edit
+
+	}
+}
+
+proc add-text {canvas x y} {
+	global text_annotations 
+	set t [$canvas create text $x $y -text "" -justify left -anchor nw -font PaintFont -fill red]
+	edit-text $canvas $t
+	if {[$canvas itemcget $t -text] ne ""} {
+		lappend text_annotations $t
+	} else {
+		$canvas delete $t
+	}
+	return $t
+}
+
+proc object-hit {canvas x y {type {}} } {
+	set x1 [expr {$x-2}]
+	set x2 [expr {$x+2}]
+	set y1 [expr {$y-2}]
+	set y2 [expr {$y+2}]
+	set objs [$canvas find overlapping  $x1 $y1 $x2 $y2]
+	if {$type eq {}} {
+		return $objs
+	} else {
+		return [lmap o $objs {expr \
+			{ [$canvas type $o] eq $type ? $o : [continue]  }}]
+	}
+}
+
+proc on-canvas-move(none) {w x y} {}
+proc on-canvas-press(none) {w x y} {}
+proc on-canvas-release(none) {w x y} {}
+
+
+proc on-canvas-move(draw) {w x y} {
+	$w coords $::pencil [concat [$w coords $::pencil] $x $y]
+}
+
+proc on-canvas-press(draw) {w x y} {
+	set ::pencil [$w create line $x $y $x $y -fill $::Fill -width 3]
+}
+
+proc on-canvas-release(draw) {w x y} {
+	set $::pencil ""
+}
+
+proc on-canvas-move(text) {w x y} {}
+proc on-canvas-press(text) {w x y} {}
+proc on-canvas-release(text) {w x y} {
+	set current [object-hit $w $x $y text]
+	if {[llength $current] > 0} {
+		edit-text $w $current
+	} else {
+		add-text $w $x $y
+	}
+}
+
+
+proc on-canvas-move(png) {w x y} {}
+proc on-canvas-press(png) {w x y} {}
+proc on-canvas-release(png) {w x y} {
+	$w create image $x $y -image $::CurImage -anchor nw
+}
+
+
+proc on-canvas-move(erase) {w x y} {
+	set current [object-hit $w $x $y]
+	if {[llength $current] > 0} {
+		foreach obj $current {
+			$w delete $obj
+		}
+	}
+}
+proc on-canvas-press(erase) {w x y} {}
+proc on-canvas-release(erase) {w x y} {
+	on-canvas-move(erase) $w $x $y
+}
+
+ proc on-canvas-press(move) {w x y} {
+    set ::curobj [$w find withtag current]
+    set ::X $x; set ::Y $y
+ }
+ proc on-canvas-move(move) {w x y} {
+    $w move $::curobj [expr {$x-$::X}] [expr {$y-$::Y}]
+    set ::X $x; set ::Y $y
+ }
+
+proc on-canvas-release(move) {w x y} {
+  set $::curobj ""
+}
+
+proc insert-png {{fn {}}} {
+		global env
+    set ::mode png
+	  set name [exec s4s-select-file-from-folder "Select Image" $::AttachmentDir "*.png"]
+    if {$name ne ""} {
+	  	load-image $name
+    	set ::CurImage $name
+    }
+}
+
+proc switch-page {idx} {
+	set num_pages [llength $::Pages]
+	set selected_page [lindex $::Pages $::CurPage]
+	set idx [expr {min($idx, $num_pages-1)}]
+	set idx [expr {max($idx, 0)}]
+	set next_page [lindex $::Pages $idx]
+	pack forget $selected_page
+	pack $next_page -expand true -fill both
+	set ::CurPage $idx
+}
+
+proc switch-page-by {delta} {
+	switch-page [expr {$::CurPage + $delta}]
+}
+
+proc add-page {} {
+	incr ::maxpageid
+	set path ".pages.p$::maxpageid"
+	lappend ::Pages [canvas $path -bg white -relief flat]
+	switch-page [expr {[llength $::Pages] - 1}]
+	
+	bind $path <ButtonPress-1>   { on-canvas-press($mode) %W %x %y;   break}
+	bind $path <B1-Motion>       { on-canvas-move($mode) %W %x %y;    break}
+	bind $path <ButtonRelease-1> { on-canvas-release($mode) %W %x %y; break}
+}
+
+proc del-page {} {
+	set path [lindex $::Pages $::CurPage]
+	set ::Pages [lreplace $::Pages $::CurPage $::CurPage]
+	destroy $path
+	if {[llength $::Pages] == 0} {add-page}
+	switch-page-by 0
+}
+
+# reset the application completely
+proc reset-application {} {
+	# clear image list
+	set ::Images [dict create]
+	set ::CurImage ""
+
+	foreach img [image names] {
+		image delete $img
+	}
+
+	# remove all pages (exept of the first empty...)
+	set num_pages [llength $::Pages]
+	for {set i 0} {$i < $num_pages} {incr i} {
+		del-page
+	}
+}
+
+proc save-to-file {} {
+	set output [list]
+	set pagecount 0
+	
+	# save the midi program
+	lappend output "midiprog $::MidiProg"
+
+	# save pages content
+	foreach page $::Pages {
+		if {$pagecount > 0} {
+			lappend output "add-page"
+		}
+		foreach obj [$page find all] {
+			set type   [$page type $obj]
+			set coords [$page coords $obj]
+			set opts   ""		
+			foreach {ptype prop} $::safeprops {
+				if {$type eq $ptype} {lappend opts $prop [$page itemcget $obj $prop]}
+			}
+			lappend output "draw $type $coords $opts"
+		}
+		incr pagecount
+	}
+
+	# check for output directory
+	if {![file exists $::SheetDir]} {
+		file mkdir $::SheetDir
+	}
+
+	# write output to file
+	set f [open $::File "w"]
+	foreach line $output {
+		puts $f $line
+	}
+	close $f
+}
+
+proc load-element {args} {
+	set path [lindex $::Pages $::CurPage]
+
+	# special case: preload an image
+	if {[lindex $args 0] eq "image"} {
+		for {set i 1} {$i < [llength $args]} {incr i} {
+			if {[lindex $args $i] eq "-image"} {
+				load-image [lindex $args $i+1]
+			}
+		}
+	}
+
+	# else simple draw whats given
+	catch {$path create {*}$args}
+}
+
+proc load-image {name} {
+	image create photo $name -file [file join $::AttachmentDir $name]
+}
+
+proc midiprog {programnum} {
+	set ::MidiProg $programnum
+	catch {exec "midi-progchange" $programnum}
+}
+
+proc load-from-file {} {
+    reset-application
+		set song [file normalize [file join $::File .. .. ]]
+		set ::AttachmentDir [file join $song attachments]
+		set ::SheetDir [file join $song sheets]
+		set ::Title [file rootname [file tail $song]]
+
+    if {[file exists $::File]} {
+		# safe interpreter 
+		set si [interp create -safe]
+		$si alias add-page add-page
+		$si alias draw load-element
+		$si alias midiprog midiprog
+		set f [open $::File]
+		set src [read $f]
+		close $f
+		$si eval $src
+		interp delete $si
+		switch-page 0
+    }
+}
+
+proc switch-file {idx} {
+    if {$idx >= 0 && $idx < [llength $::Files]} {
+		set ::FileIdx $idx
+		set ::File [lindex $::Files $::FileIdx]
+		load-from-file
+    }
+}
+
+proc switch-file-by {offset} {
+    switch-file [expr {$::FileIdx + $offset}]
+}
+
+set fullscreen 0
+proc toggle-fullscreen {} {
+	global fullscreen
+	set fullscreen [expr {!$fullscreen}]
+	wm attributes . -fullscreen $fullscreen
+}
+
+proc remove-data-dir {filename} {
+	global env
+	set nfn [file normalize $filename]
+	set ddir [file normalize $env(S4S_DATA_DIR)]
+	if {[string first $ddir $nfn] == 0} {
+		set len [string length $ddir]
+		set filename [string range $nfn $len+1 end]
+	}
+	return $filename
+}
+
+proc open-attachments {} {
+	exec s4s-open-folder $::AttachmentDir
+}
+
+# widget          label        command                 parameters to widget
+s4s-toolbar .toolbar -common {-width 4} {
+	ttk::button      "Save"            {save-to-file}         {}
+	-                {}                {}                     {}
+	ttk::button      "<<"              {switch-file-by -1}    {}
+	ttk::button      "File"            {load-from-file}       {-textvariable Title -width 20}
+	ttk::button      ">>"              {switch-file-by 1}     {}
+	-                {}                {}                     {}
+	ttk::button      "<"               {switch-page-by -1}    {}
+	ttk::button      "0"               {switch-page-by 0}     {-textvariable CurPage -width 8}
+	ttk::button      ">"               {switch-page-by 1}     {}
+	-                {}                {}                     {}
+	ttk::button      "+Pg"             {add-page}             {}
+	ttk::button      "-Pg"             {del-page}             {}
+	-                {}                {}                     {}
+	ttk::radiobutton "None"            {}                     {-variable mode -value none -width 6}
+	ttk::radiobutton "Draw"            {}                     {-variable mode -value draw -width 6}
+	ttk::radiobutton "Erase"           {}                     {-variable mode -value erase -width 6}
+	ttk::radiobutton "Text"            {}                     {-variable mode -value text -width 6}
+	ttk::radiobutton "Move"            {}                     {-variable mode -value move -width 6}
+	ttk::radiobutton "Image..."        {insert-png}           {-variable mode -value png -width 8}
+	-                {}                {}                     {}
+	ttk::button      "MIDI"            {edit-midi}            {-width 8}
+	ttk::button      "Attachments..."  {open-attachments}     {-width 12}
+}
+
+pack [frame .pages] -fill both -expand true
+#ttk::notebook::enableTraversal .pages
+
+#.toolbar.idx configure -textvariable CurPage
+#.toolbar.fname configure -textvariable Title -width 30
+#.toolbar configure -relief solid -bd 1
+
+set mode none
+
+add-page
+switch-file-by 0
+
+bind . <Right> {switch-page-by 1; break}
+bind . <Left>  {switch-page-by -1; break}
+bind . <Down>  {switch-file-by 1; break}
+bind . <Up>    {switch-file-by -1; break}
+bind . <s>     {save-to-file}
+bind . <Control-s>   {save-to-file}
+bind . <F1> 	"set mode none"   
+bind . <F2> 	"set mode draw"   
+bind . <F3> 	"set mode erase" 
+bind . <F4> 	"set mode text"  
+bind . <F5> 	"set mode move"  
+bind . <F6> 	"insert-png"       
+
+bind . <F11>  "toggle-fullscreen"

@@ -1,0 +1,77 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+package require s4s-song 1.0
+
+set all_params [list order language translation]
+
+ttk::label .lbl -text "Specific parameters for the setlist entry:"
+pack .lbl -fill x
+
+frame .props
+grid columnconfigure .props 0 -weight 1
+grid columnconfigure .props 1 -weight 5
+grid columnconfigure .props 2 -weight 5
+pack .props -expand 1 -fill both
+
+frame .toolbar
+pack .toolbar -fill x
+
+ttk::button .toolbar.ok -text "Ok" -command action-ok -default active
+pack .toolbar.ok -side left
+ttk::button .toolbar.cancel -text "Cancel" -command action-cancel
+pack .toolbar.cancel -side left
+
+bind . <Return> action-ok
+bind . <Escape> action-cancel
+
+set root [file join $env(S4S_DATA_DIR) [lindex $argv 0]]
+
+label .props.coldesc1 -text "Enabled" -relief groove -justify left
+grid  .props.coldesc1 -row 0 -column 0 -sticky nsew
+label .props.coldesc2 -text "Value" -relief groove
+grid  .props.coldesc2 -row 0 -column 1 -sticky nsew
+label .props.coldesc3 -text "Default" -relief groove
+grid  .props.coldesc3 -row 0 -column 2 -sticky nsew
+
+set row 1
+foreach param $all_params {
+	set active($param) 0
+	set title [string totitle $param]
+	ttk::checkbutton .props.active-$param -text $title -variable active($param)
+	grid        .props.active-$param -row $row -column 0 -sticky w
+	ttk::entry  .props.value-$param  -textvariable values($param)
+	grid        .props.value-$param  -row $row -column 1 -sticky nsew
+	ttk::label  .props.song-$param  -text [s4s-song::prop $root $param] -relief sunken
+	grid        .props.song-$param  -row $row -column 2 -sticky nsew
+	incr row
+}
+
+for {set i 1} {$i < $argc} {incr i} {
+	set arg [lindex $argv $i]
+	foreach param $all_params {
+		if {$arg eq "--$param"} {
+			set values($param) [lindex $argv $i+1]
+			set active($param) 1
+		}
+	}
+}
+
+proc action-ok {} {
+	global all_params active values
+	set output [list]
+	foreach param $all_params {
+		if {[set active($param)]} {
+			lappend output "--$param" [set values($param)]
+		}
+	}
+	puts [join $output " "]
+	exit
+}
+
+proc action-cancel {} {
+	global argv
+	puts [lrange $argv 1 end]
+	exit
+}

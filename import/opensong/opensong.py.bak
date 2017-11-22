@@ -1,0 +1,445 @@
+# -*- coding: utf-8 -*-
+
+'''
+OpenSong Song Importer 
+
+Converts opensong files into slides4saints json files.
+
+usage: opensong.py <opensong-file>
+
+outputs converted text to json.
+
+can also be imported as module
+
+'''
+
+from lineparser import LineOrientedParser
+import xml.etree.ElementTree as ET
+import re, os, os.path
+import os.path as path
+import quopri
+import codecs
+import sys
+# change opensong section names to our own.
+def fix_secname(secname):
+    return re.sub(r'[vV](\d)+', r'\1', secname).strip().lower()
+
+# name output file correctly
+def fix_basename(basename):
+    return re.sub(r'[^a-zA-Z0-9_\-]+', '-', basename).lower() + '.s4s-song'
+
+class OpenSongTextualImporter(LineOrientedParser):
+    # Patterns used in the Parser #
+
+    # line is a section
+    pat_section = re.compile(r'^\[([\w\d]+)\]')
+    # parsing one 'C    ' chord section on a chord line or 
+    # emptyness until the next chord
+    pat_chordssec   = re.compile(r'([\w\d/\\|\-\#\+\(\)]*)(\s+|$)') 
+    # verse line with section
+    pat_versewithsec = re.compile(r'\d+')
+
+
+
+
+    def __init__(self, text, language="eng"):
+        super(OpenSongTextualImporter, self).__init__(text)
+        self.language = language
+
+
+    def parse(self):
+        # Stores the sections: is dict of section name -> list (with section's text parts and commands)
+        self.sections = {}
+
+        # current chord line
+        self.curchordline = None
+        # current section
+        self.cursection = None
+
+        while self.haslines():
+            # process a new Input line
+            line = self.read_line()
+
+
+            if not line: break
+
+            # is the line a sections
+            section_match = self.pat_section.match(line)
+            # is it a line with prefixed number
+            versewithsec_match = self.pat_versewithsec.match(line)
+
+            # empty line: delete chords
+            if len(line.strip()) == 0:
+                self.curchordline = None
+
+            # section line - cursection is the matching list in the sections dict
+            elif section_match:
+                sec = self.register_section(section_match.group(1))
+
+                # if valid section: this is the next section
+                if sec != None:
+                    self.cursection = sec
+
+                # a section starts without chords
+                self.curchordline = None
+
+            # text line with section in it.
+            elif versewithsec_match:
+                sec = self.register_section(versewithsec_match.group(0))
+                self.text_line(line, sec)
+            
+            # test if section exists: if none exists: error
+            elif self.cursection == None:
+                raise RuntimeError('no section defined')
+
+            # chord line
+            elif line.startswith('.'):
+                self.curchordline = line[1:]
+
+            # text line - no verse line
+            elif line.startswith(' '):
+                self.text_line(line, self.cursection)
+
+
+            # TODO: comment line
+            elif line.startswith(';'):
+                pass
+
+
+        return self.sections
+
+    def parse_line_with_chords(self, chordline, line):
+        parts = []
+
+        chordlen = len(chordline)
+        linelen = len(line)
+
+        # bring chord line and text line to the same length
+        if chordlen < linelen:
+            chordline += " " * (linelen - chordlen)
+        elif linelen < chordlen:
+            line += " " * (chordlen - linelen)
+
+        for m in re.finditer(self.pat_chordssec, chordline):
+            # m matches now a chord section
+
+            # add text part and chordline
+            parts += self.line_to_parts(line[m.start():m.end()], m.group(1))
+
+        return parts
+
+    def register_section(self, secname):
+        secname = fix_secname(secname)
+
+        # ignore opensong "v" sections
+        if secname == "v": 
+            return None
+
+        if not secname in self.sections:
+            self.sections[secname] = []
+
+        return self.sections[secname]
+
+    def text_line(self, line, sec):
+        if self.curchordline:
+            linedata = self.parse_line_with_chords(self.curchordline, line[1:])
+            self.curchordline = None
+        else:
+            linedata = self.line_to_parts(line[1:])
+
+        if sec == None:
+            # ERROR: nobody has declared a section -     create one
+            sec = []
+            self.sections['1'] = sec
+
+
+        # add the generated data to the section
+        sec += linedata
+
+        # each text line in opensong cause a linebreak in s4s
+        if len(sec) > 0 and sec[-1] != {"!": "/"}:
+            sec.append({"!": "/"})
+
+    # searches text for opensong special chars add the matching commands if necessary
+    def line_to_parts(self, line, chord=None):
+
+        # format line whitespace
+        line = re.sub(r'\s+', ' ', line)
+        line = re.sub(r'_+', '', line)
+
+        for tok in re.split(r'(\|\||\|)', line):
+            if tok == "":
+                continue
+            elif tok == '|':
+                yield {"!": "-"}
+            elif tok == '||':
+                yield {"!": "/"}
+            else:
+                tok = re.sub(r'\s+', ' ', tok)
+                if chord:
+                    yield {'#c': chord, self.language: tok}
+                else:
+                    yield {self.language: tok}
+
+class OpenSongImporter:
+    def __init__(self, filename, language="eng"):
+        tree = ET.parse(filename)
+        root = tree.getroot()
+
+        # output json data
+        self.data = {}
+
+        # default Language
+        self.language = language
+
+        # set default language in song
+        self.data["langs"] = [language]
+
+        # import Opensong XML Entries which describe the song 
+        keys = {
+            'title':           'title',
+            'author':          'author',
+            'copyright':       'copyright',
+            'hymn_number':     'hymn_number',
+            'ccli':            'ccli',
+            'capo':            'capo',
+            'key':             'key',
+            'user1':           'maintainer',
+            'tempo':           'tempo',
+        }
+
+        # find Keys in XML and convert to S4S key and store in data
+        for oskey, s4skey in keys.items():
+            path = "./{}".format(oskey)
+            node = root.find(path)
+            if node != None and node.text != "" and node.text != None:
+                self.data[s4skey] = node.text
+                #print(s4skey, node.text)
+
+        # mark we're from opensong
+        self.imported_from = "opensong"
+
+        # read the lyrics text
+        lyricsnode = root.find('./lyrics')
+        # ERROR: if no lyricsnode was found, this is a critical error
+        if lyricsnode == None: raise RuntimeError("No Lyrics found in Opensong file")
+        
+        # we'll output the imported text in the output as comment
+        #print( '/* Open Song Imported Lyrics are\n' + lyricsnode.text  +'\n*/') 
+
+        # use the lyricsparse to make data from Opensong Song Format
+        lyricsparser = OpenSongTextualImporter(lyricsnode.text, self.language)
+        # store the parsed sections in data
+        self.data['sections'] = lyricsparser.parse()
+
+        # read ordering
+        ordernode = root.find('./presentation')
+        
+        # ERROR: if no ordernode was found, we use a straigt ordering
+        if ordernode == None: 
+            order = list(self.data['sections'].keys())
+        else:
+            # make the ordering array
+            if ordernode.text != None:
+                # replace "verse marker of opensong"
+                order = list(fix_secname(s) for s in 
+                             re.split(r'\s+', ordernode.text.strip().lower()))
+            else:
+                order = list(sorted(self.data['sections'].keys()))
+
+
+
+        self.data['ordering'] = order
+
+# old JSON format, keep for reference
+def convert_to_json(filename, outfile, args):
+
+    if args.verbose:
+        print (filename + ' -> ' + args.output)
+
+    try:
+        obj = OpenSongImporter(filename, args.language)
+    except:
+        return
+
+    with open(outfile, 'w') as f:
+        json.dump(obj.data, f, indent=2)
+
+def s4s_filename(title):
+    fn = title.lower()
+    fn = fn.replace(' ', '-')
+    fn = fn.replace('\t', '-')
+    fn = fn.encode('punycode')
+    return fn
+
+def convert_to_s4s(filename, outdir, args):
+    '''
+        convert from the original JSON format
+        to s4s format...
+
+        it's an ugly mess... it was quite late... but it works
+    '''
+
+
+
+    if args.verbose:
+        print (filename + ' -> ' + args.output)
+
+    try:
+        obj = OpenSongImporter(filename, args.language)
+    except:
+        print >>sys.stderr, "error while reading file", filename
+        return
+
+    # directory where to store the data
+    try:
+        d = path.join(outdir, s4s_filename(obj.data['title']) + u'.s4s-song')
+    except:
+        print >>sys.stderr, "error generating filename for", filename
+        return
+    
+    if not os.path.exists(d):
+        os.makedirs(d)
+
+    #ordering
+    with codecs.open(path.join(d, 'order.txt'), 'w', encoding='utf-8') as f:
+        f.write(' '.join(obj.data['ordering']))
+
+    # song-title w/o punycode
+    with codecs.open(path.join(d, 'title.txt'), 'w', encoding='utf-8') as f:
+        f.write(obj.data['title'])
+
+    # because we've written that parse to create JSON we need to
+    # do some back-conversaton... sadly
+    for secname, secdata in obj.data['sections'].items():
+        # a line means here: an entity that consists of the text to display
+        # and it's chords and translations
+        lines = []
+        line = {}
+
+        with codecs.open(path.join(d, secname+'.s4s-song-section'), 'w', encoding='utf-8') as f:
+
+
+            for entry in secdata:
+                if '!' in entry:
+                    if entry['!'] == '/':
+                        # line-break
+                        lines.append(line)
+                        line = {}
+                    elif entry['!'] == '-':
+                        lines.append(line)
+                        lines.append('!slide')
+                        line = {}
+                    else:
+                        print 'unknown command', entry['!']
+
+                else:
+                    if not '#c' in entry:
+                        if not '#c' in line:
+                            line['#c'] = []
+                        line['#c'].append('~')
+
+                    if not obj.language in entry:
+                        if not obj.language in line:
+                            line[obj.language] = []
+                        line[obj.language].append('~')
+
+                    for ename, edat in entry.items():
+                        if not ename in line:
+                            line[ename] = []
+                        if len(line) > 0:
+                            line[ename].append(edat)
+
+
+
+            for line in lines: 
+
+                if line == '!slide':
+                    f.write('slide\n\n')
+                else:
+
+
+                    text = line.get(obj.language, [])
+                    chord = line.get('#c', [])
+                    while(len(chord) < len(text)):
+                        chord.append('')
+                    while(len(chord) > len(text)):
+                        text.append('')
+
+                    text_res = []
+                    chord_res = []
+                    for idx, textpart in enumerate(text):
+                        m = re.search(r'\s+$', textpart)
+                        if not m:
+                            lastword = textpart.rsplit(' ', 1)
+                            if len(lastword) == 2:
+                                lastword = lastword[-1]
+                                rspace = len(lastword)
+                                #textpart = textpart[:-rspace] + '~' * rspace
+                                if idx < len(chord) - 1:
+                                    chord[idx+1] = rspace * '~' + chord[idx+1]
+                                    text[idx+1] = textpart[-rspace:] + text[idx+1]
+                                    textpart = textpart[:-rspace]
+                            elif len(lastword) == 1 and chord[idx] != '~' and idx < len(chord) - 1 and text[idx+1].strip() != '' and text[idx+1].strip() != '~':
+                                textpart += ' -'
+
+                        if len(textpart.strip()) == 0:
+                            textpart = '~'
+                        textpart = textpart.split()
+                        chord_part = [chord[idx]] + ['~'] * (len(textpart) - 1)
+
+                        text_res += textpart
+                        chord_res += chord_part
+
+                    if len(chord_res) > 0 and len(text_res) > 0:
+                        f.write('chords\t' + '\t'.join(chord_res) + '\n')
+                        f.write(obj.language + '\t' +  '\t'.join(text_res) + '\n')
+                        f.write('\n')
+
+
+    
+        
+
+if __name__=="__main__":
+    # Parse Arguments
+    import json
+    import argparse
+    parser = argparse.ArgumentParser(description='convert opensong file into slides4saints json')
+    o = parser.add_argument    
+    o('file', type=str, nargs='?', help='file or directory to import')
+    o('-l', '--language', type=str, help='language of song', default="eng")
+    o('-o', '--output', type=str, help='output file or directory')
+    o('-s', '--set', action='store_true', help='import set, not song')
+    o('-v', '--verbose', action='store_true', help='verbosity')
+    args = parser.parse_args()
+
+    # Parse input file and dump data to STDOUT
+    if not os.path.isdir(args.file):
+        #convert_to_json(args.filename, args.output, args)
+        convert_to_s4s(args.file, args.output, args)
+    else:
+        join = os.path.join
+        relpath = os.path.relpath
+
+        for root, dirs, files in os.walk(args.file):
+            if args.output:
+                outdir = join(args.output, relpath(root, args.file))
+            else:
+                outdir = '.'
+
+            if not os.path.exists(outdir):
+                os.makedirs(outdir)
+
+            for basename in files:
+                if basename.startswith('.'): 
+                    continue
+
+                fn = join(root, basename)
+                #outbasename = fix_basename(basename)
+                
+                #outfn = join(outdir, outbasename)
+
+                convert_to_s4s(fn, outdir, args)
+
+        
+

@@ -1,0 +1,278 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec wish8.6 "$0" "$@"
+
+#
+# a very simple presenter module for slides4saints
+#
+#
+# this is a very basic display-application for slides4saints. 
+# it basically shows up the principles
+# how to write such an application so that anyone can create one by itself
+#
+# understands the following commands
+#
+#  line      - adds a line of text to the output
+#  clear     - clears the output
+#  font_size - change the font size (in pt)
+#
+# this display will be closed when the input stream is broken
+
+#
+# Set up the input (stdin)
+# 
+#
+# we read the input asyncronously to let tk do its job
+fconfigure stdin -blocking false -encoding utf-8
+fileevent stdin readable "read-input stdin"
+
+# the line counter (number of lines displayed. this is limited!)
+set maxlines 8
+set fontsize 35
+set black 0
+
+set cfg(fontsize_scale) $env(S4S_DISPLAY_FONT_SIZE_SCALE)
+set cfg(fontsize_min)   $env(S4S_DISPLAY_FONT_SIZE_MIN)
+set cfg(fontsize_max)   $env(S4S_DISPLAY_FONT_SIZE_MAX)
+set cfg(bgcolor)        $env(S4S_DISPLAY_BG_COLOR)
+set cfg(textcolor)      $env(S4S_DISPLAY_TEXT_COLOR)
+set cfg(subcolor)       $env(S4S_DISPLAY_SUBTEXT_COLOR)
+
+set cfg(subscale)       $env(S4S_DISPLAY_SUBTEXT_SCALE)
+
+set cfg(spacing) 0.05
+
+
+#
+# UI Preparation
+#
+
+# adapt the font style to be a 'display'
+font create DisplayFont -family [font configure TkDefaultFont -family]
+font configure DisplayFont -weight bold -size $fontsize
+
+font create SubFont -family [font configure TkDefaultFont -family]
+font configure SubFont -weight bold -size $fontsize
+
+# black background
+
+pack [canvas .c ] -fill both -expand 1
+.c configure -bg $cfg(bgcolor)
+. configure -bg $cfg(bgcolor)
+
+# lines text
+set lines [list]
+
+proc clear-screen {} {
+	global maxlines lines
+	set lines [list]
+	redraw
+}
+
+proc redraw {} {
+	global black cfg lines 
+	if {$black} {
+		clear-screen
+		return
+	}
+
+	set w [winfo width .c]
+	set h [winfo height .c]
+
+	set cx [expr {$w / 2}]
+	set cy [expr {$h / 2}]
+
+	set spacing [expr {int($h * $cfg(spacing))}]
+
+	set num_lines    0
+	set num_sublines 0
+	foreach {type text} $lines {
+		switch -exact -- $type {
+			line    { incr num_lines }
+			subline { incr num_sublines }
+		}
+	}
+
+	# Calculate vertical height
+	#given:  height, num_l, num_s, scale
+	#
+	#height = num_l * height_l + num_s * height_s
+	#height_s = scale * height_l
+	#
+	#height = num_l * height_l + num_s * scale * height_l
+	#height = height_l * (num_l + num_s * scale)
+	#height_l = height / (num_l + num_s * scale)
+
+	set available_h [expr {$h - $spacing * ($num_lines + $num_sublines)}]
+
+	# Calculate the font-size depending on maximum height
+	if {[expr {$num_lines + $num_sublines}] == 0} {
+			set newsize 20
+			set subsize 16
+	} else {
+		set newsize [expr {int($available_h / ($num_lines + $num_sublines * $cfg(subscale))) }]
+		set subsize [expr {int($newsize * $cfg(subscale))}]
+	}
+
+	if {$newsize < 0 } return
+
+	# Calculate the font-size depending on maximum width
+	font configure DisplayFont -size -$newsize
+	font configure SubFont -size -$subsize
+	set maxwidth 0
+	foreach {type text} $lines {
+		switch -exact -- $type {
+			line    { set maxwidth [::tcl::mathfunc::max [font measure DisplayFont $text] $maxwidth] }
+			subline { set maxwidth [::tcl::mathfunc::max [font measure SubFont $text] $maxwidth] }
+		}
+	}
+
+	if {$maxwidth > $w} {
+		set newsize [expr { int($newsize / (double($maxwidth) / double($w))) }]
+	}
+
+	# set the new font size
+	set newsize [expr { int($newsize * $cfg(fontsize_scale))}]
+	set subsize [expr { int($newsize * $cfg(subscale))}]
+	font configure DisplayFont -size -$newsize
+	font configure SubFont -size -$subsize
+
+	# calculate full height (for vertical centering)
+	set fullheight 0
+	foreach {type text} $lines {
+		switch -exact -- $type {
+			line    { incr fullheight $newsize }
+			subline { incr fullheight $subsize }
+		}
+		incr fullheight $spacing
+	}
+
+	# Draw text
+	set offset [expr {($h - $fullheight) / 2}]
+	.c delete all
+	#.c create rect 0 $offset $w [expr {$fullheight + $offset}]  -outline #f00 -width 2 -fill #0f0
+	#.c create rect 0 0 $w $available_h -outline #0f0 -width 2
+	#.c create rect 0 $offset $w $h -outline #0f0
+	foreach {type text} $lines {
+		#.c create line 0 $offset $w $offset -fill #f00
+		switch -exact -- $type {
+			line    { 
+				.c create text $cx $offset -text $text -font DisplayFont -fill $cfg(textcolor) -justify center -anchor n
+				incr offset $newsize
+				incr offset $spacing
+			}
+			subline { 
+				.c create text $cx $offset -text $text -font SubFont -fill $cfg(subcolor) -justify center -anchor n
+				incr offset $subsize
+				incr offset $spacing
+			}
+		}
+	}
+}
+
+#
+# Input parsing
+#
+#
+# parse the commands on stdin and act as commanded
+# input reading must be nonblocking so that the ui can keep working
+# in the same thread
+proc read-input chan {
+	global text maxlines black cfg lines styles
+   
+	# could not read anything
+	if {[gets $chan line] < 0} {
+
+		# input closed - close pipe and exit aplication 
+	  if {[eof $chan]} {
+	     close $chan
+	     exit
+	     return
+	  }
+	  # Could not read a complete line this time; Tcl's
+	  # internal buffering will hold the partial line for us
+	  # until some more data is available over the socket.
+
+	# we can process a line of input
+	} else {
+
+		# split string in 'command' and 'rest'. and execute the command
+	  if [regexp {^(\w+)\s*(.*)} $line _ cmd args] {
+			switch -exact -- $cmd {
+				
+				line {
+					lappend lines line [string trim $args]
+				}
+
+				subline {
+					lappend lines subline [string trim $args]
+				}
+
+				done {
+					redraw
+				}
+				
+				clear {
+					clear-screen
+				}
+				
+				font_size {
+					set fontsize $args
+					font configure DisplayFont -weight bold -size $args
+				}
+				
+				black {
+					set onoff [string trim $args]
+					if {$onoff eq "on"} {
+						set black 1
+						clear-screen
+					} elseif {$onoff eq "off"} {
+						set black 0
+						redraw
+					}
+				}
+				
+				default {
+					#ignore any other line
+				}
+			}
+		}
+	}
+}
+
+#
+# User events
+#
+
+proc toggle {var} {
+	global $var
+	return [set $var [expr { ![set $var] }] ]
+}
+
+proc toggle-fullscreen {} {
+	global fullscreen
+	wm attributes . -fullscreen [toggle fullscreen]
+	after 100 redraw
+}
+
+# toggle fullscreen for window
+set fullscreen 0
+bind . <Double-1>   { toggle-fullscreen }
+bind . <F11>        { toggle-fullscreen }
+bind . <Alt-Return> { toggle-fullscreen }
+
+# allow limited changing of font size (no persistence currently)
+bind . <KeyPress-plus> {
+	incr fontsize 5
+	font configure TkDefaultFont -weight bold -size $fontsize
+}
+
+bind . <KeyPress-minus> {
+	incr fontsize -5
+	font configure TkDefaultFont -weight bold -size $fontsize
+}
+
+bind . <Configure> {
+	if {"%W" eq "."} { redraw }
+}
+

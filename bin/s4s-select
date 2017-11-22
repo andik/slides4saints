@@ -1,0 +1,104 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+#
+# S4S Select
+#
+# select an entity from the S4S_DATA_DIR
+#
+
+package require s4s-table 1.0
+
+set needle ""
+set type [lindex $argv 0]
+set lastdir "."
+set repository [list]
+
+toplevel .dlg
+
+wm title .dlg "Select Entry"
+
+bind .dlg <Escape>        {exit}
+
+# Toolbar
+# ------
+pack [frame .dlg.tb] -expand 0 -fill x
+
+# Song List Search Box
+entry .dlg.tb.sf -textvariable needle
+pack .dlg.tb.sf -fill x -expand 1 -side left
+
+pack [button .dlg.tb.ok     -text "Ok"        -width 10 -command action-ok] -side left
+pack [button .dlg.tb.cancel -text "Cancel"    -width 10 -command exit]      -side left
+
+bind .dlg.tb.sf <Up>                {action-repo-prev; break}
+bind .dlg.tb.sf <Down>              {action-repo-next; break}
+bind .dlg.tb.sf <KeyRelease-Down>   {break} ;#no update-ui
+bind .dlg.tb.sf <KeyRelease-Up>     {break} ;#no update-ui
+bind .dlg.tb.sf <KeyRelease-Return> {break} ;#no update-ui
+bind .dlg.tb.sf <KeyRelease>        {update-ui}
+bind .dlg.tb.sf <Tab>               {focus .dlg.s; break}
+bind .dlg.tb.sf <Return>            {action-ok; break}
+bind .dlg.tb.sf <Escape>            {exit}
+
+# Song List
+# ---------
+s4s-table::create .dlg.s [list Type Name Path] [list]
+pack .dlg.s -fill both -expand 1
+#.dlg.s column Type -minwidth 2 -stretch 0 -width 50
+
+bind .dlg.s <Return>          {action-ok; break}
+bind .dlg.s <Tab>             {focus .l; break}
+bind .dlg.s <FocusIn>         {focus .dlg.tb.sf; break}
+bind .dlg.s.tv <Double-1>     {action-ok; break}
+
+proc read-data-dir {} {
+	global repository type
+
+		# add all relevant stuff to the list
+	set ls [open "| s4s-ls $type"]
+
+	while {[gets $ls line] >= 0} {
+		lassign [split $line] type filename
+		set name [file tail $filename]
+		set path [file dirname $filename]
+		lappend repository [list $type $name $path]
+	}
+
+	s4s-table::set-elems .dlg.s [lsort -index 1 $repository]
+
+	close $ls
+}
+
+proc update-ui {} {
+	global repository needle
+	s4s-table::set-filter .dlg.s $needle 1
+}
+
+proc action-repo-next {} {
+	s4s-table::move-next .dlg.s
+}
+
+proc action-repo-prev {} {
+	s4s-table::move-prev .dlg.s
+}
+
+proc action-ok {} {
+	set el [s4s-table::selected-elem .dlg.s]
+	if {$el ne ""} {
+		set type [lindex $el 0]
+		set fn [file join [lindex $el 2] [lindex $el 1]]
+		puts "$type $fn"
+	}
+	exit
+}
+
+wm iconify .
+wm withdraw .
+read-data-dir
+update-ui
+focus .dlg.tb.sf
+
+tkwait window .dlg
+exit

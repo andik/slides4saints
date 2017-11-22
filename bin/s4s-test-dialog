@@ -1,0 +1,21 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec wish "$0" "$@"
+
+package require s4s-dialog 1.0
+
+console show
+
+s4s-dialog .dlg -title "Testdialog" -content {
+	label .dlg.lbl -text "TEST TEXT"
+	pack .dlg.lbl
+} -ok {
+		puts "ok"
+		destroy .dlg
+} -cancel -destroy {
+	puts "--done--"
+	destroy .dlg
+} -sep -b "..." {
+	puts "..."
+}
+

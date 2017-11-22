@@ -1,0 +1,112 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec tclsh8.6 "$0" "$@"
+
+package require s4s-song 1.0
+package require s4s-print 1.0
+
+namespace import s4s-print::tag
+namespace import s4s-print::out
+
+s4s-print::begin
+
+set language "eng"
+
+#
+# Utils
+#
+
+proc parse-chordpro-format {line} {
+	set tokstart 0
+	set line [string trim $line]
+
+	set parts [list {}]
+
+	# split line at '[chord]' entries. add text, chord to list
+	# note: first entry (text) is {} in that list
+	while {[regexp -indices -start $tokstart {\[[^\]]+} $line chordpos]} {
+		set chordstart [lindex $chordpos 0]
+		set chordend [lindex $chordpos 1]
+		# lyrics
+		lappend parts [string range $line $tokstart   [expr {$chordstart - 1}]]
+		# chord
+		lappend parts [string range $line [expr {$chordstart + 1}] $chordend]
+		set tokstart [expr {$chordend + 2}]
+	}
+	
+	lappend parts [string range $line $tokstart end]
+
+	return $parts
+}
+
+proc generate-html-line {parts} {
+	tag table {} {
+		tag tr {} {
+			foreach {chord text} $parts {
+				tag td {class chord} {
+					if {$chord ne ""} {
+						out "$chord&nbsp"
+					}
+				}
+			}		
+		}
+		tag tr {} {
+			foreach {chord text} $parts {
+				tag td {} {
+					#if {$text eq " "} {set text "&nbsp;"}
+					set text [string map {" " "&nbsp"} $text]
+					out "$text"
+				}
+			}		
+		}
+	}
+}
+
+proc process {root} {
+	global outfile song language
+	set had_sections [list]
+	set title [s4s-song::prop $root title]
+
+	if {![file isdirectory $root]} {
+		error "file $root is no valid Slides4Saints song"
+	}
+
+	tag h1 {} {
+		out [regsub {\(} $title "<br>("]
+	}
+
+	tag p {class ordering} {
+		out "Order:"
+		out [s4s-song::prop $root order]
+	}
+
+	tag div {class songbody} {
+		foreach sec [s4s-song::order $root] {
+			
+			# print each section only once (but in the playing order...)
+			if {[lsearch $had_sections $sec] > -1} {
+				continue
+			} else {
+				lappend had_sections $sec
+			}
+
+			tag div {class section} {
+				tag h2 {} {
+					out "[string totitle $sec]"
+				}
+				s4s-song::foreach-sec-line $root $sec cmd rest  {
+					if {$cmd eq $language} {
+						set parts [parse-chordpro-format $rest]
+						generate-html-line $parts
+					}
+				}
+			}
+		}
+	}
+}
+
+tag div {class s4s-song} {
+	process [lindex $argv 0]
+}
+
+s4s-print::end

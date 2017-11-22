@@ -1,0 +1,95 @@
+#!/bin/sh
+# the next line runs script as wish\
+exec tclsh8.6 "$0" "$@"
+
+package require s4s-song 1.0
+
+fconfigure stdout -encoding utf-8
+
+#
+# opens a s4s-song folder and generates 'slide' and line information
+# for s4s-control 
+#
+
+proc filter-lyrics {lyrics} {
+	# remove chord pro annotations
+	return [regsub -all {\[[^\]]+\]} $lyrics ""]
+}
+
+proc process-song {root} {
+	global cfg
+	
+	if {$cfg(order) eq ""} {
+		set order [s4s-song::order $root]
+	} else {
+		set order $cfg(order)
+	}
+
+	set title       [s4s-song::prop $root title]
+	set language    [s4s-song::prop $root language    $cfg(language)]
+	set translation [s4s-song::prop $root translation $cfg(translation)]
+
+	puts ":begin song $title"
+	puts ":file $root"
+	puts ":lang $language"
+
+	if {$translation ne ""} {
+		puts ":translation $translation"
+	} else {
+		set translation "xyzabcdef-this-will-never-happen"
+	}
+
+	# insert an empty slide in front of every song
+	puts "slide"
+
+	# write the sections data
+	foreach section $order {
+		puts ":begin section $section"
+
+		s4s-song::foreach-sec-line $root $section cmd rest {
+			switch -- $cmd \
+				$language {
+					puts "line [filter-lyrics $rest]"
+				} \
+				$translation {
+					puts "subline [filter-lyrics $rest]"
+				} \
+				default {
+					puts "$cmd $rest"
+				}
+		}
+
+		puts "slide"
+		puts ":end section"
+	}
+
+	puts ":end song"
+}
+
+# default configuration
+set cfg(language)    $env(S4S_LANG)
+set cfg(translation) $env(S4S_TRANSLATION)
+set cfg(order)       ""
+
+# Process Parameters
+for {set i 0} {$i < $argc} {incr i} {
+	set arg [lindex $argv $i]
+	switch -exact -- $arg {
+		--language {
+			set cfg(language) [lindex $argv $i+1]
+			incr i
+		}
+		--translation {
+			set cfg(translation) [lindex $argv $i+1]
+			incr i
+		}
+		--order {
+			set cfg(order) [split [lindex $argv $i+1]]
+			incr i
+		}
+		default {
+			process-song $arg
+		}
+	}
+}
+

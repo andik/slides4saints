@@ -1,0 +1,22 @@
+# source this file in s4s root
+export PATH=bin:$PATH
+export S4S_DATA_DIR=`pwd`/data
+export S4S_LIB_DIR=`pwd`/lib
+
+
+export S4S_LANG=eng
+export S4S_TRANSLATION=de
+
+# display configuration options
+export S4S_DISPLAY_FONT_SIZE_SCALE=0.95
+export S4S_DISPLAY_FONT_SIZE_MIN=10
+export S4S_DISPLAY_FONT_SIZE_MAX=50
+
+
+export S4S_DISPLAY_BG_COLOR=#200
+export S4S_DISPLAY_TEXT_COLOR=#fff
+export S4S_DISPLAY_SUBTEXT_COLOR=#ccc
+
+export S4S_DISPLAY_SUBTEXT_SCALE=0.7
+
+export TCLLIBPATH="$TCLLIBPATH $S4S_LIB_DIR/tcl"

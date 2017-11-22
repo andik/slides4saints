@@ -1,0 +1,42 @@
+#!/bin/sh
+# the next line restarts using wish \
+exec wish8.6 "$0" "$@"
+
+package require s4s-song 1.0
+package require s4s-dialog 1.0
+package require s4s-table 1.0
+package require s4s-toolbar 1.0
+
+set title [lindex $argv 0]
+set rootdir [lindex $argv 1]
+set filter [lindex $argv 2]
+
+set files [lmap f [glob -nocomplain [file join $rootdir $filter]] {
+	file tail $f
+}]
+#set files [list A B C]
+
+proc ok {} {
+	puts [s4s-table::selected-elem .dlg.file]
+	exit
+}
+
+proc diropen {} {
+	exec s4s-open-folder $::rootdir
+}
+
+wm iconify .
+wm withdraw .
+
+s4s-dialog .dlg -title $title -body {
+	s4s-table::create .dlg.file Attachment $files
+	pack .dlg.file -expand 1 -fill both
+	
+	.dlg.file configure -width 300
+
+	bind .dlg         <Down>     {s4s-table::move-next .dlg.file}
+	bind .dlg         <Up>       {s4s-table::move-prev .dlg.file}
+	bind .dlg.file.tv <Double-1> ok
+} -ok ok -cancel -b "Open dir..." diropen
+
+exit
