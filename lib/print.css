@@ -1,0 +1,58 @@
+.s4s-song {
+    position: relative;
+    width: 210mm;
+    /*height: 297mm;*/
+    overflow: clip;
+    padding: 0px;
+    margin: 0px;
+}
+.s4s-song + .s4s-song {
+	page-break-before: always;
+	-moz-page-break-before: always;
+	-webkit-page-break-before: always;
+}
+.s4s-song table, .s4s-song tr, .s4s-song td {
+	padding: 0px;
+	margin: 0px;
+	border-spacing: 0px;
+	border-collapse: collapse;
+	page-break-inside: avoid;
+	page-break-before: avoid;
+	break-before: avoid;
+	break-inside: avoid;
+}
+.s4s-song .section {
+	page-break-inside: avoid;
+	page-break-before: avoid;
+	break-before: column;
+	break-inside: avoid;
+}
+.s4s-song .songbody {
+	width: 100%;
+	columns: 2;
+	-moz-columns: 2;
+	-webkit-columns: 2;
+}
+.s4s-song .chord {
+	font-weight: bold;
+}
+.s4s-song h1 {
+	border-bottom: solid 2px #000;
+	margin-top: 0mm;	
+	margin-bottom: 2mm;	
+}
+.s4s-song h2 {
+	border-bottom: solid 1px #000;
+	margin-top: 0px
+}
+.s4s-song table {
+	margin-bottom: 1mm;
+}
+.s4s-song .ordering {
+	margin-top: 1mm;	
+	margin-bottom: 1mm;	
+}
+body {
+	font-family: Calibri, sans-serif;
+	font-size: 11pt;
+}
