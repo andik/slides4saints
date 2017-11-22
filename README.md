@@ -2,6 +2,8 @@
 
 this is a program to aid both churches and worship bands to display their song texts during an service and also manage their songs/sets. 
 
+![simple screenshot](doc/images/screenshot.png "basic s4s screenshot")
+
 **IMPORTANT** the current version of slides4saints is just for internal testing
 purposes. it is not ready to use yet.
 We arbitrary set some environment variables for windows and supply you with some unchecked
