@@ -19,6 +19,7 @@ set S4S_TRANSLATION=de
 :: create the data dir variable if not set
 :: this variable defines where the S4S Data is stored.
 if "%S4S_DATA_DIR%"=="" (
+	setx S4S_DATA_DIR "%~dp0\..\data"
 	set S4S_DATA_DIR=%~dp0\..\data
 )
 
@@ -34,7 +35,6 @@ set S4S_SONG_EDIT_SIZE=10
 set S4S_DISPLAY_FONT_SIZE_SCALE=0.95
 set S4S_DISPLAY_FONT_SIZE_MIN=10
 set S4S_DISPLAY_FONT_SIZE_MAX=50
-
 
 
 set S4S_DISPLAY_BG_COLOR=#200
