@@ -2,6 +2,11 @@
 
 this is a program to aid both churches and worship bands to display their song texts during an service and also manage their songs/sets. 
 
+**IMPORTANT** the current version of slides4saints is just for internal testing
+purposes. it is not ready to use yet.
+We arbitrary set some environment variables for windows and supply you with some unchecked
+binaries for windows... this will change in the next weeks...
+
 ## why slide4saints?
 
 There are a lot of such programs out yet, so why another one?
@@ -48,4 +53,6 @@ There are a lot of such programs out yet, so why another one?
 
 ## why TCL?
 
-- http://beauty-of-imagination.blogspot.de/2016/01/tcltk-vs-web-we-should-abandon-web.html
+- easy to distribute cross platform applications
+- aside: http://beauty-of-imagination.blogspot.de/2016/01/tcltk-vs-web-we-should-abandon-web.html
+
