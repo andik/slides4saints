@@ -345,26 +345,35 @@ def convert_to_s4s(filename, outdir, args):
         os.makedirs(d)
 
     # Directory for Song Attachments
+
     attachments_dir = path.join(d, 'attachments')
     if not os.path.exists(attachments_dir):
         os.makedirs(attachments_dir)    
 
+    property_dir = path.join(d, 'property')
+    if not os.path.exists(property_dir):
+        os.makedirs(property_dir)
+
+    section_dir = path.join(d, 'section')
+    if not os.path.exists(section_dir):
+        os.makedirs(section_dir)
+
     #ordering
-    with codecs.open(path.join(d, 'order.s4s-song-property'), 'w', encoding='utf-8') as f:
+    with codecs.open(path.join(property_dir, 'order.txt'), 'w', encoding='utf-8') as f:
         f.write(' '.join(obj.data['ordering']))
 
     # song-title
-    with codecs.open(path.join(d, 'title.s4s-song-property'), 'w', encoding='utf-8') as f:
+    with codecs.open(path.join(property_dir, 'title.txt'), 'w', encoding='utf-8') as f:
         f.write(obj.data['title'])
 
     # song-language
-    with codecs.open(path.join(d, 'language.s4s-song-property'), 'w', encoding='utf-8') as f:
+    with codecs.open(path.join(property_dir, 'language.txt'), 'w', encoding='utf-8') as f:
         f.write(obj.language)
 
     # song-title
     for key in obj.keys:
         if key in obj.data:
-            with codecs.open(path.join(d, key+'.s4s-song-property'), 'w', encoding='utf-8') as f:
+            with codecs.open(path.join(property_dir, key+'.txt'), 'w', encoding='utf-8') as f:
                 f.write(obj.data[key])
 
     # because we've written the OpenSongLyricsParser to create JSON we need to
@@ -376,7 +385,7 @@ def convert_to_s4s(filename, outdir, args):
         if len(secdata) == 0 and secname not in obj.data['ordering']:
             continue
 
-        outfn = path.join(d, secname+'.s4s-song-section')
+        outfn = path.join(section_dir, secname+'.txt')
         with codecs.open(outfn, 'w', encoding='utf-8') as f:
 
             for entry in secdata:
