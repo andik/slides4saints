@@ -42,7 +42,6 @@ set cfg(subscale)       $env(S4S_DISPLAY_SUBTEXT_SCALE)
 
 set cfg(spacing) 0.05
 
-
 #
 # UI Preparation
 #
@@ -56,7 +55,8 @@ font configure SubFont -weight bold -size $fontsize
 
 # black background
 
-pack [canvas .c ] -fill both -expand 1
+canvas .c -bd 0 -relief solid -selectborderwidth 0 -highlightthickness 0
+pack .c -fill both -expand 1
 .c configure -bg $cfg(bgcolor)
 . configure -bg $cfg(bgcolor)
 
@@ -72,7 +72,7 @@ proc clear-screen {} {
 proc redraw {} {
 	global black cfg lines 
 	if {$black} {
-		clear-screen
+		.c delete all
 		return
 	}
 
@@ -220,16 +220,15 @@ proc read-input chan {
 					set fontsize $args
 					font configure DisplayFont -weight bold -size $args
 				}
-				
+
 				black {
 					set onoff [string trim $args]
 					if {$onoff eq "on"} {
 						set black 1
-						clear-screen
 					} elseif {$onoff eq "off"} {
 						set black 0
-						redraw
 					}
+					redraw
 				}
 				
 				default {
@@ -251,7 +250,27 @@ proc toggle {var} {
 
 proc toggle-fullscreen {} {
 	global fullscreen
-	wm attributes . -fullscreen [toggle fullscreen]
+
+	if {$::tcl_platform(platform) eq "windows"} {
+		# multi-screen fullscreen under windows is a little bit complicated...
+		if {[toggle fullscreen]} {
+			set ::oldgeometry [wm geometry .]
+			wm overrideredirect . yes      ;# removes window decorations
+			wm state . zoomed
+			update idletasks               ;# updates the full-screen
+			wm attributes . -topmost yes   ;# on Win9x, if =no, alt-tab will malfunction
+		} else {
+			wm overrideredirect . no
+			wm state . normal
+			update idletasks
+			wm attributes . -topmost no
+			wm manage .
+			wm geometry . $::oldgeometry
+		}
+	} else {
+		wm attributes . -fullscreen [toggle fullscreen]
+	}
+
 	after 100 redraw
 }
 
