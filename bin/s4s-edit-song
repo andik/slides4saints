@@ -138,6 +138,15 @@ proc add-section {name {text ""}} {
 
 # ---------------------------------------------------------------------------
 
+proc rm-section {idx sec} {
+	set song(sections) [lreplace $song(sections) $idx $idx]
+	destroy .sections.$sec
+	lappend song(removed) $sec
+	set song(changed) 1
+}
+
+# ---------------------------------------------------------------------------
+
 proc load-song {} {
 	global song songprop
 
@@ -200,10 +209,7 @@ proc action-rm-section {} {
 	# do not delete the properties tab
 	if {$idx < 0} return
 
-	set song(sections) [lreplace $song(sections) $idx $idx+1]
-	destroy .sections.$sec
-	lappend song(removed) $sec
-	set song(changed) 1
+	rm-section $idx $sec
 }
 
 # ---------------------------------------------------------------------------
@@ -220,10 +226,7 @@ proc action-rename-section {} {
 	set newname [exec s4s-dlg-get-string "New Name for Section '$sec'" "p.e. 1..n - Verse, c - Chorus..." ""]
 	if {$newname ne ""} {
 		set sectext [.sections.$sec get 0.0 end]
-		destroy .sections.$sec
-		set song(sections) [lreplace $song(sections) $idx $idx+1]
-		lappend song(removed) $sec
-		set song(changed) 1
+		rm-section $idx $sec
 		add-section $newname $sectext
 	}
 }
